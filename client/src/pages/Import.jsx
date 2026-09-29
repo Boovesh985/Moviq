@@ -33,13 +33,15 @@ export default function Import() {
   const [results, setResults] = useState({});
   const [error, setError] = useState('');
 
-  const run = async (kind, files) => {
-    if (!files?.length) return;
+  const run = async (kind, input) => {
+    const files = [...(input.files || [])];
+    input.value = '';   // so choosing the same file again (after fixing it) triggers another import
+    if (!files.length) return;
     setBusy(kind);
     setError('');
     try {
       const r = kind === 'letterboxd'
-        ? await api.post('/import/letterboxd', { entries: await readLetterboxd([...files]) })
+        ? await api.post('/import/letterboxd', { entries: await readLetterboxd(files) })
         : await api.post('/import/netflix', { titles: await readNetflix(files[0]) });
       setResults((cur) => ({ ...cur, [kind]: r }));
     } catch (e) {
@@ -64,7 +66,7 @@ export default function Import() {
           <p className="muted">Brings in ratings, diary dates, reviews, likes and your watchlist.</p>
           <label className={`btn btn-green ${busy ? 'disabled' : ''}`}>
             {busy === 'letterboxd' ? 'Importing…' : 'Choose Letterboxd export'}
-            <input type="file" accept=".zip,.csv" multiple hidden disabled={!!busy} onChange={(e) => run('letterboxd', e.target.files)} />
+            <input type="file" accept=".zip,.csv" multiple hidden disabled={!!busy} onChange={(e) => run('letterboxd', e.target)} />
           </label>
           <Result r={results.letterboxd} kind="letterboxd" />
         </section>
@@ -78,7 +80,7 @@ export default function Import() {
           <p className="muted">Films are marked as watched; series episodes and trailers are skipped. Netflix doesn’t export ratings, so rate a few afterwards.</p>
           <label className={`btn btn-red ${busy ? 'disabled' : ''}`}>
             {busy === 'netflix' ? 'Importing…' : 'Choose Netflix history'}
-            <input type="file" accept=".csv" hidden disabled={!!busy} onChange={(e) => run('netflix', e.target.files)} />
+            <input type="file" accept=".csv" hidden disabled={!!busy} onChange={(e) => run('netflix', e.target)} />
           </label>
           <Result r={results.netflix} kind="netflix" />
         </section>

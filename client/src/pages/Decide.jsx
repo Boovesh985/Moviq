@@ -10,6 +10,18 @@ const MOODS = ['feel-good', 'funny', 'thrilling', 'mind-bending', 'romantic', 'e
 const COMPANY = [['solo', 'Just me'], ['date', 'Date night'], ['friends', 'Friends'], ['family', 'Family (kid-safe)']];
 const LIMIT = 60;
 
+/** Retry a request that failed in transit or on the server (not one that was refused), with a short backoff. */
+async function retry(fn, tries = 3) {
+  for (let i = 1; ; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i >= tries || (e.status && e.status < 500)) throw e;
+      await new Promise((r) => setTimeout(r, 600 * i));
+    }
+  }
+}
+
 /** Film-leader countdown: the signature of decide mode. */
 function Leader({ left, done }) {
   const pct = (left / LIMIT) * 100;
@@ -47,16 +59,25 @@ export default function Decide() {
   const decide = async (exclude = [], auto = false) => {
     setBusy(true);
     setError('');
+    const s = state.current;
+    const ask = (loosen) => retry(() => api.post('/decide', {
+      max_runtime: s.time, moods: s.moods, company: s.company, only_available: s.onlyAvailable, exclude_ids: exclude, ...loosen,
+    }));
+    // When the clock runs out nobody pressed anything, so always land on picks: drop answers that rule everything out.
+    const steps = auto ? [{}, { moods: [] }, { moods: [], max_runtime: null, only_available: false }] : [{}];
     try {
-      const s = state.current;
-      const { picks: p } = await api.post('/decide', { max_runtime: s.time, moods: s.moods, company: s.company, only_available: s.onlyAvailable, exclude_ids: exclude });
+      let p = [];
+      for (const loosen of steps) {
+        ({ picks: p } = await ask(loosen));
+        if (p.length) break;
+      }
       if (!p.length) throw new Error('Nothing fits all of that. Loosen the time limit or pick a different mood.');
       setPicks(p);
       setSeen((x) => [...new Set([...x, ...p.map((m) => m.id)])]);
       setTookSec((t) => t ?? Math.round((Date.now() - started.current) / 1000));
       if (auto) setTimedOut(true);
     } catch (e) {
-      setError(e.message);
+      setError(e.status && e.status < 500 ? e.message : 'Couldn’t reach Moviq just now. Press the button to try again.');
     } finally {
       setBusy(false);
     }
@@ -150,7 +171,7 @@ export default function Decide() {
             <span>Only films I can stream right now <em>(free on Moviq + <Link to="/settings">your services</Link>)</em></span>
           </label>
           {error && <p className="error-note" role="alert">{error}</p>}
-          <button className="btn btn-red decide-go" disabled={busy}>{busy ? 'Picking…' : 'Decide for me'}</button>
+          <button className="btn btn-red decide-go" disabled={busy}>{busy ? 'Picking…' : error ? 'Try again' : 'Decide for me'}</button>
         </form>
       </div>
     </main>

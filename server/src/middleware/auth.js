@@ -33,6 +33,10 @@ export function requireAuth(req, res, next) {
   next();
 }
 
+/** router.param handler: ids in the URL must be positive integers, anything else is a 404. */
+export const intParam = (what) => (_req, _res, next, value) =>
+  (/^\d{1,9}$/.test(value) ? next() : next(new HttpError(404, `We couldn’t find that ${what}.`)));
+
 export class HttpError extends Error {
   constructor(status, message) {
     super(message);

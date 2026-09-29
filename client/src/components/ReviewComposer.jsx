@@ -29,15 +29,25 @@ export default function ReviewComposer({ movie, existing, onClose, onSaved }) {
     dialog.current?.showModal();
   }, []);
 
-  // Debounced spoiler analysis while typing
+  // Debounced spoiler analysis while typing. Each result remembers the text it scored, and a slow
+  // response never replaces a newer one.
+  const latest = useRef(0);
   useEffect(() => {
-    if (body.trim().length < 12) return setCheck(null);
-    const t = setTimeout(() => api.post('/reviews/spoiler-check', { text: body }).then(setCheck).catch(() => {}), 450);
+    if (body.trim().length < 12) {
+      latest.current++;
+      return setCheck(null);
+    }
+    const t = setTimeout(() => {
+      const n = ++latest.current;
+      api.post('/reviews/spoiler-check', { text: body })
+        .then((r) => n === latest.current && setCheck({ ...r, text: body }))
+        .catch(() => {});
+    }, 450);
     return () => clearTimeout(t);
   }, [body]);
 
-  const flagged = check?.sentences?.filter((s) => s.spoiler) ?? [];
-  const sentence = (s) => body.slice(s.start, s.end).trim();
+  const flagged = (check?.sentences?.filter((s) => s.spoiler) ?? []).filter((s) => body.includes(check.text.slice(s.start, s.end).trim()));
+  const sentence = (s) => check.text.slice(s.start, s.end).trim();   // offsets refer to the checked text
   const blurredCount = flagged.filter((s) => !notSpoilers.has(sentence(s))).length;
   const toggleNotSpoiler = (text) => setNotSpoilers((cur) => {
     const next = new Set(cur);
@@ -92,7 +102,7 @@ export default function ReviewComposer({ movie, existing, onClose, onSaved }) {
                   const text = sentence(s);
                   const cleared = notSpoilers.has(text);
                   return (
-                    <span key={s.start} className={`flagged-line ${cleared ? 'cleared' : ''}`}>
+                    <span key={`${s.start}-${text}`} className={`flagged-line ${cleared ? 'cleared' : ''}`}>
                       <q>{text}</q>
                       <button type="button" className="link-btn" onClick={() => toggleNotSpoiler(text)} aria-pressed={cleared}>
                         {cleared ? 'Blur it after all' : 'Not a spoiler'}

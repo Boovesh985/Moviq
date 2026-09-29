@@ -16,7 +16,9 @@ New users lean on the crowd until they've rated enough for the personal signals 
 """
 from __future__ import annotations
 
+import functools
 import hashlib
+import inspect
 import os
 import threading
 import time
@@ -57,17 +59,51 @@ class Profile:
     liked: set[int] = field(default_factory=set)
 
 
+def serving(fn):
+    """Public entry point: refresh the model if needed, then read it under the lock so a refit
+    can't swap it out halfway through a request."""
+    sig = inspect.signature(fn)
+
+    @functools.wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        bound = sig.bind(self, *args, **kwargs).arguments
+        users = bound.get("user_ids") or ([bound["user_id"]] if "user_id" in bound else [])
+        self.ensure_fresh(users)
+        with self.lock:
+            return fn(self, *args, **kwargs)
+    return wrapper
+
+
 class Recommender:
+    # Fitted state that fit() swaps in as a whole; everything else (locks, learned weights) stays put.
+    KEEP = ("lock", "refit_lock", "weights", "weights_version", "dirty_at", "changed_users")
+
     def __init__(self):
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()        # held while serving a request or swapping in a refit
+        self.refit_lock = threading.Lock()   # one refit at a time
         self.fitted_at = 0.0
-        self.dirty = True
+        self.dirty_at = time.time()
+        self.changed_users = set()           # people whose own data changed since the last fit
         self.weights = dict(DEFAULT_WEIGHTS)
         self.weights_version = 0
 
     # ── data ──────────────────────────────────────────────────────────────
+    def mark_dirty(self, user_id: int | None = None):
+        self.dirty_at = time.time()
+        if user_id is not None:
+            self.changed_users.add(user_id)
+
     def fit(self):
-        self.build(*self.load_raw())
+        """Builds a fresh model to the side (1-3 s), then swaps it in at once."""
+        started = time.time()
+        covered = set(self.changed_users)
+        fresh = Recommender()
+        fresh.build(*self.load_raw())
+        state = {k: v for k, v in fresh.__dict__.items() if k not in self.KEEP}
+        with self.lock:
+            self.__dict__.update(state)
+            self.fitted_at = started   # changes that arrived during the build still count as new
+            self.changed_users -= covered
 
     @staticmethod
     def load_raw():
@@ -167,13 +203,30 @@ class Recommender:
                 self.watchlist.setdefault(u, set()).add(self.index[mid])
 
         self.fitted_at = time.time()
-        self.dirty = False
 
-    def ensure_fresh(self):
-        with self.lock:
-            stale = time.time() - self.fitted_at
-            if (self.dirty and stale > 3) or stale > 300 or self.fitted_at == 0:
-                self.fit()
+    def ensure_fresh(self, user_ids=()):
+        """Serve the current model and refit in the background when data has changed, so requests never
+        wait on a refit. The exception is the person who just changed their own data (rated a film,
+        finished onboarding): their next request waits for a fit, so it reflects what they just did."""
+        if self.fitted_at == 0 or self.changed_users.intersection(user_ids):
+            with self.refit_lock:   # waits for a refit already in flight, then checks again
+                if self.fitted_at == 0 or self.changed_users.intersection(user_ids):
+                    self.fit()
+            return
+        stale = time.time() - self.fitted_at
+        dirty = self.dirty_at > self.fitted_at
+        if ((dirty and stale > 3) or stale > 300) and not self.refit_lock.locked():
+            threading.Thread(target=self._refit_in_background, daemon=True).start()
+
+    def _refit_in_background(self):
+        if not self.refit_lock.acquire(blocking=False):
+            return
+        try:
+            self.fit()
+        except Exception as e:  # keep serving the previous model
+            print(f"[recommender] background refit failed: {e}")
+        finally:
+            self.refit_lock.release()
 
     # ── scoring ───────────────────────────────────────────────────────────
     def profile(self, user_id: int) -> Profile:
@@ -358,8 +411,8 @@ class Recommender:
                 "people": len(hidden), "hidden_ratings": sum(len(h) for h in hidden.values())}
 
     # ── public API ────────────────────────────────────────────────────────
+    @serving
     def recommend(self, user_id: int, limit=20, exclude_ids=()):
-        self.ensure_fresh()
         p = self.profile(user_id)
         final, parts = self.blend(p)
         blocked = p.seen.copy()
@@ -371,8 +424,8 @@ class Recommender:
         return [dict(movie_id=int(self.ids[j]), score=round(float(final[j]), 3), match=int(pct[j]), reasons=self.reasons(j, p, parts))
                 for j in order]
 
+    @serving
     def match(self, user_id: int, movie_ids: list[int]):
-        self.ensure_fresh()
         p = self.profile(user_id)
         if not p.weights.any():
             return {}
@@ -380,8 +433,8 @@ class Recommender:
         pct = self.match_pct(final)
         return {str(mid): int(pct[self.index[mid]]) for mid in movie_ids if mid in self.index}
 
+    @serving
     def similar(self, movie_id: int, limit=12):
-        self.ensure_fresh()
         if movie_id not in self.index:
             return []
         j = self.index[movie_id]
@@ -394,9 +447,9 @@ class Recommender:
         m = self.meta[j]
         return m["free"] or bool(set(m["providers"]) & set(services))
 
+    @serving
     def decide(self, user_id: int, max_runtime=None, moods=(), company="solo", services=(), only_available=False, exclude_ids=(), k=3):
         """60-second decide mode: exactly k diverse picks that fit the moment."""
-        self.ensure_fresh()
         p = self.profile(user_id)
         final, parts = self.blend(p)
         score = final.copy()
@@ -442,9 +495,9 @@ class Recommender:
             result.append(dict(movie_id=int(self.ids[j]), match=int(pct[j]), reasons=why[:3]))
         return result
 
+    @serving
     def group(self, user_ids: list[int], limit=15, max_runtime=None, moods=(), family=False):
         """Group mode: rank films by average happiness, protected by least-misery."""
-        self.ensure_fresh()
         per = {}
         seen_all = np.ones(len(self.ids), dtype=bool)
         seen_any = np.zeros(len(self.ids), dtype=bool)
@@ -467,9 +520,9 @@ class Recommender:
         return [dict(movie_id=int(self.ids[j]), group_score=round(float(score[j]), 1),
                      members={str(u): int(per[u][j]) for u in user_ids}) for j in order]
 
+    @serving
     def taste(self, user_id: int):
         """Taste DNA: which genres and moods this user rates above their own average."""
-        self.ensure_fresh()
         p = self.profile(user_id)
         genres, moods = {}, {}
         for j, w in enumerate(p.weights):

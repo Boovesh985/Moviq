@@ -7,8 +7,10 @@ const r = Router();
 const PUBLIC = 'id, username, email, display_name, bio, avatar_hue, services, favorite_ids, is_admin';
 
 r.post('/register', async (req, res) => {
-  const { username = '', email = '', password = '', displayName } = req.body ?? {};
-  const uname = username.trim().toLowerCase();
+  const { username, email: rawEmail, password: rawPassword, displayName } = req.body ?? {};
+  const uname = String(username ?? '').trim().toLowerCase();
+  const email = String(rawEmail ?? '').trim();
+  const password = String(rawPassword ?? '');
   if (!/^[a-z0-9_]{3,20}$/.test(uname)) throw new HttpError(400, 'Usernames are 3–20 characters: letters, numbers and underscores.');
   if (!/^\S+@\S+\.\S+$/.test(email)) throw new HttpError(400, 'Enter a valid email address.');
   if (password.length < 8) throw new HttpError(400, 'Passwords need at least 8 characters.');
@@ -18,15 +20,16 @@ r.post('/register', async (req, res) => {
   const user = await one(
     `INSERT INTO users (username, email, password_hash, display_name, avatar_hue)
      VALUES ($1,$2,$3,$4,$5) RETURNING ${PUBLIC}`,
-    [uname, email.toLowerCase(), await bcrypt.hash(password, 10), displayName?.trim() || uname, Math.floor(Math.random() * 360)],
+    [uname, email.toLowerCase(), await bcrypt.hash(password, 10), String(displayName ?? '').trim().slice(0, 40) || uname, Math.floor(Math.random() * 360)],
   );
   setAuthCookie(res, user);
   res.status(201).json({ user });
 });
 
 r.post('/login', async (req, res) => {
-  const { login = '', password = '' } = req.body ?? {};
-  const row = await one(`SELECT ${PUBLIC}, password_hash FROM users WHERE username=$1 OR email=$1`, [login.trim().toLowerCase()]);
+  const login = String(req.body?.login ?? '').trim().toLowerCase();
+  const password = String(req.body?.password ?? '');
+  const row = await one(`SELECT ${PUBLIC}, password_hash FROM users WHERE username=$1 OR email=$1`, [login]);
   if (!row || !(await bcrypt.compare(password, row.password_hash))) {
     throw new HttpError(401, 'That username and password don’t match.');
   }

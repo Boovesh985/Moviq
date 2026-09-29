@@ -51,7 +51,12 @@ async function resolver() {
   };
 }
 
-const validDate = (s) => (/^\d{4}-\d{2}-\d{2}/.test(s || '') ? s.slice(0, 10) : null);
+const validDate = (s) => {
+  const d = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || ''));
+  if (!d) return null;
+  const date = new Date(Date.UTC(+d[1], +d[2] - 1, +d[3]));
+  return date.getUTCMonth() === +d[2] - 1 && date.getUTCDate() === +d[3] ? d[0] : null;
+};
 const validRating = (v) => {
   const n = Number(v);
   return n >= 0.5 && n <= 5 ? Math.round(n * 2) / 2 : null;
@@ -88,7 +93,11 @@ r.post('/letterboxd', async (req, res) => {
          ON CONFLICT (user_id, movie_id) DO UPDATE SET
            rating = COALESCE(EXCLUDED.rating, reviews.rating), liked = reviews.liked OR EXCLUDED.liked,
            body = CASE WHEN EXCLUDED.body <> '' THEN EXCLUDED.body ELSE reviews.body END,
-           watched_on = COALESCE($6::date, reviews.watched_on), rewatch = EXCLUDED.rewatch, updated_at = NOW()`,
+           watched_on = COALESCE($6::date, reviews.watched_on), rewatch = EXCLUDED.rewatch, updated_at = NOW(),
+           spoiler_sentences = CASE WHEN EXCLUDED.body <> '' AND EXCLUDED.body IS DISTINCT FROM reviews.body THEN '[]'::jsonb ELSE reviews.spoiler_sentences END,
+           aspects = CASE WHEN EXCLUDED.body <> '' AND EXCLUDED.body IS DISTINCT FROM reviews.body THEN '[]'::jsonb ELSE reviews.aspects END,
+           scored_by = CASE WHEN (EXCLUDED.body <> '' AND EXCLUDED.body IS DISTINCT FROM reviews.body)
+                              OR (EXCLUDED.rating IS NOT NULL AND EXCLUDED.rating IS DISTINCT FROM reviews.rating) THEN NULL ELSE reviews.scored_by END`,
         [uid, movieId, rating, !!e.liked, body, watchedOn, !!e.rewatch],
       );
       if (rating != null) stats.ratings++;
@@ -102,7 +111,7 @@ r.post('/letterboxd', async (req, res) => {
     stats.watched++;
   }, 6);
 
-  mlRefresh();
+  mlRefresh(uid);
   res.json({ ...stats, added_films: find.added() });
 });
 
@@ -130,7 +139,7 @@ r.post('/netflix', async (req, res) => {
          last_watched_at = GREATEST(watch_history.last_watched_at, COALESCE($3::date, watch_history.last_watched_at))`, [uid, movieId, when]);
   }, 6);
 
-  mlRefresh();
+  mlRefresh(uid);
   const unrated = await one(`SELECT COUNT(*)::int n FROM watch_history w WHERE w.user_id = $1 AND w.completed
                              AND NOT EXISTS (SELECT 1 FROM reviews r WHERE r.user_id = w.user_id AND r.movie_id = w.movie_id)`, [uid]);
   res.json({ ...stats, added_films: find.added(), unrated: unrated.n });

@@ -37,7 +37,9 @@ export async function readLetterboxd(files) {
       csvs[file.name.toLowerCase()] = await file.text();
     }
   }
-  const pick = (name) => Object.entries(csvs).filter(([p]) => p === name || p.endsWith(`/${name}`)).flatMap(([, t]) => parseCsv(t));
+  // The export also holds deleted/, orphaned/ and lists/ folders with same-named CSVs: only read the top-level ones.
+  const other = /(^|\/)(deleted|orphaned|lists)\//;
+  const pick = (name) => Object.entries(csvs).filter(([p]) => (p === name || p.endsWith(`/${name}`)) && !other.test(p)).flatMap(([, t]) => parseCsv(t));
   const entries = new Map();
   const entry = (row) => {
     const key = `${row.Name}|${row.Year}`;
@@ -58,7 +60,7 @@ export async function readLetterboxd(files) {
     Object.assign(e, { watched: true, review: stripHtml(row.Review || ''), watched_on: row['Watched Date'] || e.watched_on });
     if (row.Rating) e.rating = Number(row.Rating);
   }
-  for (const [p, text] of Object.entries(csvs)) if (isLikes(p)) for (const row of parseCsv(text)) entry(row).liked = true;
+  for (const [p, text] of Object.entries(csvs)) if (isLikes(p) && !other.test(p)) for (const row of parseCsv(text)) entry(row).liked = true;
   for (const row of pick('watchlist.csv')) {
     const e = entry(row);
     if (!e.watched) e.watchlist = true;
@@ -68,18 +70,37 @@ export async function readLetterboxd(files) {
 
 const EPISODE = /:\s*(season|series|episode|chapter|part|volume|limited series|book|collection)\b|\bseason \d|\bepisode \d/i;
 
-function parseNetflixDate(s) {
+const SHORT_DATE = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/;
+
+/**
+ * Netflix writes short dates in the account's locale: 12/25/23 in the US, 25/12/23 in India and Europe.
+ * Any date whose first part is over 12 settles it as day-first for the whole file (and one whose second
+ * part is over 12 as month-first). If nothing settles it, day-first is the more common format worldwide.
+ */
+function dayFirst(values) {
+  for (const v of values) {
+    const m = SHORT_DATE.exec(v || '');
+    if (m && +m[1] > 12) return true;
+    if (m && +m[2] > 12) return false;
+  }
+  return true;
+}
+
+function parseNetflixDate(s, dmy) {
   if (!s) return null;
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  const m = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/);   // Netflix uses the account locale; assume month/day/year
+  const m = SHORT_DATE.exec(s);
   if (!m) return null;
+  const [day, month] = dmy ? [m[1], m[2]] : [m[2], m[1]];
+  if (+month < 1 || +month > 12 || +day < 1 || +day > 31) return null;
   const year = m[3].length === 2 ? `20${m[3]}` : m[3];
-  return `${year}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
 }
 
 /** Netflix history: NetflixViewingHistory.csv (Title, Date) or ViewingActivity.csv (full data export). */
 export async function readNetflix(file) {
   const rows = parseCsv(await file.text());
+  const dmy = dayFirst(rows.map((r) => r.Date));
   const films = new Map();
   for (const row of rows) {
     const title = row.Title;
@@ -89,7 +110,7 @@ export async function readNetflix(file) {
       const [h, m] = row.Duration.split(':').map(Number);
       if (h * 60 + m < 20) continue; // sampled, not watched
     }
-    const date = parseNetflixDate(row['Start Time'] || row.Date);
+    const date = parseNetflixDate(row['Start Time'] || row.Date, dmy);
     const prev = films.get(title);
     if (!prev || (date && date > prev.date)) films.set(title, { title, date });
   }

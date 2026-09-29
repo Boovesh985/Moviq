@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { one, many } from '../db/pool.js';
-import { requireAuth, HttpError } from '../middleware/auth.js';
+import { requireAuth, HttpError, intParam } from '../middleware/auth.js';
 import { ml } from '../lib/ml.js';
 import { CARD, CARD_FROM, cardsByIds, withMatch, withMatchRows } from '../lib/movies.js';
 import { fetchReviews } from '../lib/reviews.js';
 import { filmInsights } from '../lib/insights.js';
 
 const r = Router();
+r.param('id', intParam('film'));
 
 // Most watched this week; when the site is quiet, topped up from the last 90 days, then all-time logs.
 export async function trending(limit = 10) {
@@ -148,7 +149,7 @@ r.get('/:id', async (req, res) => {
 r.get('/:id/reviews', async (req, res) => {
   const id = Number(req.params.id);
   const sort = req.query.sort === 'recent' ? 'r.created_at DESC' : req.query.sort === 'highest' ? 'r.rating DESC NULLS LAST, likes DESC' : 'likes DESC, r.created_at DESC';
-  const page = Math.max(0, Number(req.query.page || 0));
+  const page = Math.max(0, Math.floor(Number(req.query.page) || 0));
   res.json({ reviews: await fetchReviews('r.movie_id = $2', [id], req.user?.id, { order: sort, limit: 20, offset: page * 20 }) });
 });
 
@@ -156,8 +157,11 @@ r.get('/:id/reviews', async (req, res) => {
 r.get('/:id/play', requireAuth, async (req, res) => {
   const m = await one(`SELECT id, title, year, runtime, genres, director, poster_url, backdrop_url, stream_url, trailer_key, providers FROM movies WHERE id=$1`, [req.params.id]);
   if (!m) throw new HttpError(404, 'We couldn’t find that film.');
-  const progress = await one(`SELECT position_seconds, duration_seconds, completed FROM watch_history WHERE user_id=$1 AND movie_id=$2`, [req.user.id, m.id]);
-  res.json({ ...m, progress });
+  const [progress, review] = await Promise.all([
+    one(`SELECT position_seconds, duration_seconds, completed FROM watch_history WHERE user_id=$1 AND movie_id=$2`, [req.user.id, m.id]),
+    one(`SELECT id, rating, liked, body, watched_on, rewatch, author_spoiler FROM reviews WHERE user_id=$1 AND movie_id=$2`, [req.user.id, m.id]),
+  ]);
+  res.json({ ...m, progress, review });
 });
 
 export default r;

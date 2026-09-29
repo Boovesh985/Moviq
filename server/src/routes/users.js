@@ -17,29 +17,35 @@ r.get('/services', async (_req, res) => {
 r.put('/me', requireAuth, async (req, res) => {
   const { display_name, bio, services, favorite_ids } = req.body ?? {};
   if (display_name !== undefined && !String(display_name).trim()) throw new HttpError(400, 'Display name can’t be empty.');
+  if (display_name !== undefined && String(display_name).trim().length > 40) throw new HttpError(400, 'Display names can be up to 40 characters.');
+  if (bio !== undefined && String(bio).length > 300) throw new HttpError(400, 'Bios can be up to 300 characters.');
+  if (services !== undefined && !Array.isArray(services)) throw new HttpError(400, 'Choose services from the list.');
+  if (favorite_ids !== undefined && !(Array.isArray(favorite_ids) && favorite_ids.every(Number.isInteger))) throw new HttpError(400, 'Pick favourites from the catalogue.');
   if (favorite_ids && favorite_ids.length > 4) throw new HttpError(400, 'Pick up to four favourites.');
   const user = await one(
     `UPDATE users SET display_name=COALESCE($2, display_name), bio=COALESCE($3, bio),
        services=COALESCE($4, services), favorite_ids=COALESCE($5, favorite_ids)
      WHERE id=$1 RETURNING id, username, email, display_name, bio, avatar_hue, services, favorite_ids, is_admin`,
-    [req.user.id, display_name?.trim() ?? null, bio ?? null, services?.filter((s) => typeof s === 'string').slice(0, 30) ?? null, favorite_ids ?? null],
+    [req.user.id, display_name === undefined ? null : String(display_name).trim(), bio === undefined ? null : String(bio),
+      services?.filter((s) => typeof s === 'string').slice(0, 30) ?? null, favorite_ids ? [...new Set(favorite_ids)] : null],
   );
   res.json({ user });
 });
 
 // Cold start: new members pick a few films they love so recommendations work from day one.
 r.post('/me/onboarding', requireAuth, async (req, res) => {
-  const ids = (req.body?.movie_ids ?? []).map(Number).filter(Boolean).slice(0, 20);
+  const asked = (Array.isArray(req.body?.movie_ids) ? req.body.movie_ids : []).map(Number).filter(Number.isInteger).slice(0, 20);
+  const ids = (await many('SELECT id FROM movies WHERE id = ANY($1::int[])', [asked])).map((m) => m.id);
   for (const id of ids) {
     await query(`INSERT INTO reviews (user_id, movie_id, liked) VALUES ($1,$2,TRUE) ON CONFLICT (user_id, movie_id) DO UPDATE SET liked=TRUE`, [req.user.id, id]);
     await query(`INSERT INTO watch_history (user_id, movie_id, completed) VALUES ($1,$2,TRUE) ON CONFLICT DO NOTHING`, [req.user.id, id]);
   }
-  mlRefresh();
+  mlRefresh(req.user.id);
   res.json({ ok: true, count: ids.length });
 });
 
 async function findUser(username) {
-  const u = await one(`SELECT id, username, display_name, bio, avatar_hue, favorite_ids, created_at FROM users WHERE username=$1`, [username]);
+  const u = await one(`SELECT id, username, display_name, bio, avatar_hue, favorite_ids, created_at FROM users WHERE username=$1`, [String(username).toLowerCase()]);
   if (!u) throw new HttpError(404, 'No member with that username.');
   return u;
 }

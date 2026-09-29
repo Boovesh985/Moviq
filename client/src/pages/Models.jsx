@@ -15,6 +15,8 @@ function ago(iso) {
   if (s < 86400) return `${Math.round(s / 3600)} h ago`;
   return `${Math.round(s / 86400)} days ago`;
 }
+// The number the deploy gate compared: the model's combined objective when it has one, else its main metric.
+const decisive = (h, m) => (h.metrics.objective != null ? m?.objective : m?.[KEY[h.model]]) ?? null;
 const pct = (v) => (v == null ? '–' : `${(v * 100).toFixed(1)}%`);
 const n = (v) => (v ?? 0).toLocaleString();
 
@@ -196,8 +198,8 @@ export default function Models() {
                 <td>{NAMES[h.model]}</td>
                 <td>v{h.version}</td>
                 <td>{ago(h.trained_at)}</td>
-                <td>{KEY[h.model]} {h.metrics[KEY[h.model]]?.toFixed(3) ?? '–'}</td>
-                <td>{h.baseline?.[KEY[h.model]] != null ? h.baseline[KEY[h.model]].toFixed(3) : '–'}</td>
+                <td>{h.metrics.objective != null ? 'score' : KEY[h.model]} {decisive(h, h.metrics)?.toFixed(3) ?? '–'}</td>
+                <td>{decisive(h, h.baseline)?.toFixed(3) ?? '–'}</td>
                 <td><span className={`outcome ${h.deployed ? 'ok' : 'kept'}`}>{h.deployed ? 'Deployed' : 'Kept previous'}</span></td>
                 <td className="why">{h.reason}{h.n_live ? ` · ${n(h.n_live)} live examples` : ''}</td>
               </tr>

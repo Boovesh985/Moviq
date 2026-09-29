@@ -11,13 +11,21 @@ export default function Welcome() {
   const [busy, setBusy] = useState(false);
   const nav = useNavigate();
 
-  useEffect(() => { api.get('/movies/onboarding').then((d) => setItems(d.items)); }, []);
+  const [error, setError] = useState('');
+
+  useEffect(() => { api.get('/movies/onboarding').then((d) => setItems(d.items)).catch((e) => setError(e.message)); }, []);
 
   const toggle = (id) => setPicked((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const done = async () => {
     setBusy(true);
-    await api.post('/users/me/onboarding', { movie_ids: [...picked] });
-    nav('/');
+    setError('');
+    try {
+      await api.post('/users/me/onboarding', { movie_ids: [...picked] });
+      nav('/');
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
   };
 
   return (
@@ -35,7 +43,7 @@ export default function Welcome() {
           ))}
         </div>
         <div className="welcome-bar">
-          <span>{picked.size} selected</span>
+          <span>{error ? <span className="error-note" role="alert">{error}</span> : `${picked.size} selected`}</span>
           <button className="btn btn-green" disabled={picked.size < 3 || busy} onClick={done}>
             {picked.size < 3 ? `Pick ${3 - picked.size} more` : 'Show my recommendations'}
           </button>

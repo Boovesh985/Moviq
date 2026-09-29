@@ -28,6 +28,8 @@ async function members(roomId) {
 function tally(room, mem, votes) {
   const byMovie = {};
   for (const v of votes) (byMovie[v.movie_id] ??= []).push(v);
+  // If the host ends voting early, "everyone" means everyone who took part.
+  const voters = new Set(votes.map((v) => v.user_id)).size || mem.length;
   return room.candidate_ids.map((id) => {
     const vs = byMovie[id] ?? [];
     const love = vs.filter((v) => v.vote === 2).length;
@@ -37,7 +39,7 @@ function tally(room, mem, votes) {
     const avgMatch = Object.values(matches).reduce((a, b) => a + b, 0) / Math.max(1, Object.values(matches).length);
     return {
       movie_id: id, love, yes, nope,
-      everyone: love + yes === mem.length,
+      everyone: love + yes === voters,
       score: love * 3 + yes * 2 - nope * 2 + avgMatch / 100,
       voters: vs.map((v) => ({ user_id: v.user_id, vote: v.vote })),
     };
@@ -130,6 +132,17 @@ r.post('/:code/vote', async (req, res) => {
     const pending = await one('SELECT COUNT(*)::int n FROM room_members WHERE room_id=$1 AND NOT finished', [room.id]);
     if (pending.n === 0) await query(`UPDATE watch_rooms SET status='done' WHERE id=$1`, [room.id]);
   }
+  res.json({ ok: true });
+});
+
+// Someone wandered off mid-vote: the host can reveal results from the votes so far.
+r.post('/:code/finish', async (req, res) => {
+  const room = await loadRoom(req.params.code);
+  if (room.host_id !== req.user.id) throw new HttpError(403, 'Only the host can end voting.');
+  if (room.status !== 'voting') throw new HttpError(409, 'Voting isn’t open in this room.');
+  const { n } = await one('SELECT COUNT(DISTINCT user_id)::int n FROM room_votes WHERE room_id=$1', [room.id]);
+  if (!n) throw new HttpError(409, 'Nobody has voted yet.');
+  await query(`UPDATE watch_rooms SET status='done' WHERE id=$1`, [room.id]);
   res.json({ ok: true });
 });
 

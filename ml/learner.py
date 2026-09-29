@@ -82,15 +82,17 @@ class Learner:
                 a["score"] = round(self.fuse(a["score"], rating), 3)
         return {"spoiler": sp, "sentiment": se}
 
-    def save_scores(self, cur, review_id: int, result: dict):
+    def save_scores(self, cur, review_id: int, result: dict, body: str):
+        """Writes scores for the text they were computed from; if the review was edited meanwhile, nothing is
+        written (its offsets would point into the old text) and the edit's own rescore wins."""
         sp, se = result["spoiler"], result["sentiment"]
         spans = [{"start": s["start"], "end": s["end"], "score": s["score"], **({"human": True} if s.get("human") else {})}
                  for s in sp["sentences"] if s["spoiler"]]
         cur.execute(
             """UPDATE reviews SET spoiler_score = %s, spoiler_sentences = %s, sentiment = %s, sentiment_model = %s, aspects = %s,
-                                 scored_by = %s WHERE id = %s""",
+                                 scored_by = %s WHERE id = %s AND body = %s""",
             (max(sp["score"], 0.0001), json.dumps(spans), se["score"], se.get("model_score"), json.dumps(se["aspects"]),
-             json.dumps({"spoiler": self.spoiler.version, "sentiment": self.sentiment.version, "schema": SCORING_SCHEMA}), review_id),
+             json.dumps({"spoiler": self.spoiler.version, "sentiment": self.sentiment.version, "schema": SCORING_SCHEMA}), review_id, body),
         )
 
     def rescore_review(self, review_id: int) -> dict | None:
@@ -100,7 +102,7 @@ class Learner:
             if not row or not row[0]:
                 return None
             result = self.analyze(row[0], self.human_votes([review_id]).get(review_id), row[1])
-            self.save_scores(cur, review_id, result)
+            self.save_scores(cur, review_id, result, row[0])
             return result
 
     def score_stale_reviews(self, batch: int = 300) -> int:
@@ -118,7 +120,7 @@ class Learner:
                     return total
                 votes = self.human_votes([r[0] for r in rows])
                 for rid, body, rating in rows:
-                    self.save_scores(cur, rid, self.analyze(body, votes.get(rid), rating))
+                    self.save_scores(cur, rid, self.analyze(body, votes.get(rid), rating), body)
                 total += len(rows)
             if len(rows) < batch:
                 return total

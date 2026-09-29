@@ -75,13 +75,21 @@ export default function Profile() {
   const { username, tab } = useParams();
   const [p, setP] = useState(null);
   const [error, setError] = useState('');
-  useEffect(() => { setP(null); api.get(`/users/${username}`).then(setP).catch((e) => setError(e.message)); }, [username]);
+  useEffect(() => {
+    let live = true;
+    setP(null);
+    setError('');
+    api.get(`/users/${username}`).then((d) => live && setP(d)).catch((e) => live && setError(e.message));
+    return () => { live = false; };
+  }, [username]);
 
   if (error) return <main className="journal page-pad"><p className="empty">{error}</p></main>;
   if (!p) return <main className="journal" />;
   const follow = async () => {
-    const { following } = await api.post(`/users/${username}/follow`);
-    setP({ ...p, isFollowing: following, stats: { ...p.stats, followers: p.stats.followers + (following ? 1 : -1) } });
+    try {
+      const { following } = await api.post(`/users/${username}/follow`);
+      setP((cur) => ({ ...cur, isFollowing: following, stats: { ...cur.stats, followers: cur.stats.followers + (following ? 1 : -1) } }));
+    } catch (e) { setError(e.message); }
   };
   const s = p.stats;
 

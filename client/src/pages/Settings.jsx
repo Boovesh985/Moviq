@@ -44,8 +44,8 @@ export default function Settings() {
         <h1 className="j-h1">Settings</h1>
         <p className="j-sub">Your profile, your four favourites, and the streaming services you pay for.</p>
 
-        <label className="field"><span>Display name</span><input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} /></label>
-        <label className="field"><span>Bio</span><textarea rows={3} value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} /></label>
+        <label className="field"><span>Display name</span><input value={form.display_name} maxLength={40} onChange={(e) => setForm({ ...form, display_name: e.target.value })} /></label>
+        <label className="field"><span>Bio</span><textarea rows={3} maxLength={300} value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} /></label>
 
         <h2 className="j-label">Favourite films</h2>
         <div className="favs" style={{ marginBottom: 12 }}>

@@ -10,8 +10,8 @@ export async function analyzeText(text) {
  * Has the ML service (re)score a stored review: spoiler spans (with human votes applied),
  * sentiment and aspects. If the ML service is down, its learner picks the review up later.
  */
-export async function rescoreReview(reviewId) {
+export async function rescoreReview(reviewId, authorId = null) {
   const r = await ml(`/reviews/${reviewId}/rescore`, {}, { timeout: 5000 });
-  mlRefresh();
+  mlRefresh(authorId);
   return r;
 }

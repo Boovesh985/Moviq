@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { one, query } from '../db/pool.js';
-import { requireAuth, HttpError } from '../middleware/auth.js';
+import { requireAuth, HttpError, intParam } from '../middleware/auth.js';
 import { mlRefresh } from '../lib/ml.js';
 import { CARD, CARD_FROM, withMatch } from '../lib/movies.js';
 import { many } from '../db/pool.js';
 
 const r = Router();
 r.use(requireAuth);
+r.param('movieId', intParam('film'));
 
 // Player heartbeat: saves position so "Continue watching" works.
 r.post('/:movieId/progress', async (req, res) => {
@@ -21,19 +22,28 @@ r.post('/:movieId/progress', async (req, res) => {
      RETURNING completed`,
     [req.user.id, req.params.movieId, position, duration, completed],
   );
-  if (completed) mlRefresh();
+  if (completed) mlRefresh(req.user.id);
   res.json({ completed: row.completed });
 });
 
+// Marks a film watched, or with {watched: false} unmarks it (not if it's logged: a diary entry means it was watched).
 r.post('/:movieId/watched', async (req, res) => {
   if (!(await one('SELECT 1 FROM movies WHERE id=$1', [req.params.movieId]))) throw new HttpError(404, 'We couldn’t find that film.');
+  if (req.body?.watched === false) {
+    if (await one('SELECT 1 FROM reviews WHERE user_id=$1 AND movie_id=$2', [req.user.id, req.params.movieId])) {
+      throw new HttpError(409, 'This film is in your diary. Delete the diary entry to unmark it.');
+    }
+    await query('DELETE FROM watch_history WHERE user_id=$1 AND movie_id=$2', [req.user.id, req.params.movieId]);
+    mlRefresh(req.user.id);
+    return res.json({ ok: true, watched: false });
+  }
   await query(
     `INSERT INTO watch_history (user_id, movie_id, completed) VALUES ($1,$2,TRUE)
      ON CONFLICT (user_id, movie_id) DO UPDATE SET completed=TRUE, last_watched_at=NOW()`,
     [req.user.id, req.params.movieId],
   );
-  mlRefresh();
-  res.json({ ok: true });
+  mlRefresh(req.user.id);
+  res.json({ ok: true, watched: true });
 });
 
 r.get('/list', async (req, res) => {
@@ -44,7 +54,7 @@ r.get('/list', async (req, res) => {
 r.post('/list/:movieId', async (req, res) => {
   const del = await query('DELETE FROM watchlist WHERE user_id=$1 AND movie_id=$2', [req.user.id, req.params.movieId]);
   if (!del.rowCount) await query('INSERT INTO watchlist (user_id, movie_id) VALUES ($1,$2)', [req.user.id, req.params.movieId]);
-  mlRefresh();
+  mlRefresh(req.user.id);
   res.json({ onWatchlist: !del.rowCount });
 });
 

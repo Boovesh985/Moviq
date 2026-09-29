@@ -39,12 +39,28 @@ if (fs.existsSync(dist)) {
   app.get(/^\/(?!api).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));
 }
 
+// Postgres errors that mean the request itself was bad (a malformed id or date, a film that doesn't exist).
+const PG_CLIENT_ERRORS = {
+  '22P02': [400, 'That request has a value in the wrong format.'],
+  '22007': [400, 'That date isn’t valid.'],
+  '22008': [400, 'That date isn’t valid.'],
+  '22003': [400, 'That number is out of range.'],
+  '23503': [404, 'We couldn’t find what that refers to. It may have been deleted.'],
+  '23505': [409, 'That already exists.'],
+};
+
 app.use((err, _req, res, _next) => {
+  const pg = PG_CLIENT_ERRORS[err.code];
+  if (pg) return res.status(pg[0]).json({ error: pg[1] });
   console.error(err);
   res.status(err.status || 500).json({ error: err.expose ? err.message : 'Something went wrong on our side. Try again.' });
 });
 
 const port = Number(process.env.PORT || 4000);
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Moviq API on http://localhost:${port}`);
 });
+// Node clients (including the Vite dev proxy) drop idle keep-alive sockets after 5s, the same as Node's
+// server default, so a request sent on a socket the server is closing gets ECONNRESET. Outlast them.
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 66_000;

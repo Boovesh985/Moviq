@@ -35,17 +35,28 @@ export default function Watch() {
     return () => { window.removeEventListener('mousemove', wake); window.removeEventListener('keydown', wake); clearTimeout(idle.current); };
   }, []);
 
+  // Last known position, kept outside the <video> so it can still be saved after the player unmounts.
+  const position = useRef(null);
+
   const sendProgress = (force = false) => {
     const v = video.current;
-    if (!v || !v.duration) return;
-    if (!force && Math.abs(v.currentTime - lastSent.current) < 10) return;
-    lastSent.current = v.currentTime;
-    api.post(`/watch/${id}/progress`, { position: v.currentTime, duration: v.duration }).then((r) => {
+    if (v?.duration) position.current = { position: v.currentTime, duration: v.duration };
+    const p = position.current;
+    if (!p) return;
+    if (!force && Math.abs(p.position - lastSent.current) < 10) return;
+    lastSent.current = p.position;
+    api.post(`/watch/${id}/progress`, p).then((r) => {
       if (r.completed) setFinished(true);
     }).catch(() => {});
   };
 
-  useEffect(() => () => sendProgress(true), []);
+  // Leaving the player (back button, another page) saves where you stopped.
+  useEffect(() => () => {
+    const p = position.current;
+    if (p && p.position !== lastSent.current) {
+      api.post(`/watch/${id}/progress`, p).catch(() => {});
+    }
+  }, [id]);
 
   const onLoaded = () => {
     const p = film?.progress;
@@ -92,7 +103,7 @@ export default function Watch() {
           onError={() => setVideoError(true)}
         />
         {finished && <div className="player-overlay">{afterPanel}</div>}
-        {composing && <ReviewComposer movie={film} onClose={() => setComposing(false)} onSaved={() => nav(`/film/${film.id}`)} />}
+        {composing && <ReviewComposer movie={film} existing={film.review} onClose={() => setComposing(false)} onSaved={() => nav(`/film/${film.id}`)} />}
       </main>
     );
   }
@@ -113,7 +124,7 @@ export default function Watch() {
           <span>Trailer. {film.providers?.length ? `Stream the full film on ${film.providers.join(', ')}.` : 'This film isn’t streaming on Moviq.'}</span>
           <button className="btn btn-sm btn-play" onClick={() => api.post(`/watch/${film.id}/watched`).then(() => setComposing(true))}><Eye /> I’ve watched it</button>
         </div>
-        {composing && <ReviewComposer movie={film} onClose={() => setComposing(false)} onSaved={() => nav(`/film/${film.id}`)} />}
+        {composing && <ReviewComposer movie={film} existing={film.review} onClose={() => setComposing(false)} onSaved={() => nav(`/film/${film.id}`)} />}
       </main>
     );
   }
@@ -138,7 +149,7 @@ export default function Watch() {
           </div>
         </div>
       </div>
-      {composing && <ReviewComposer movie={film} onClose={() => setComposing(false)} onSaved={() => nav(`/film/${film.id}`)} />}
+      {composing && <ReviewComposer movie={film} existing={film.review} onClose={() => setComposing(false)} onSaved={() => nav(`/film/${film.id}`)} />}
     </main>
   );
 }

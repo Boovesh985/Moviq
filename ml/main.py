@@ -79,9 +79,13 @@ def health():
             "movies": len(getattr(rec, "ids", []))}
 
 
+class RefreshIn(BaseModel):
+    user_id: int | None = None
+
+
 @app.post("/refresh")
-def refresh():
-    rec.dirty = True
+def refresh(body: RefreshIn | None = None):
+    rec.mark_dirty(body.user_id if body else None)
     return {"ok": True}
 
 

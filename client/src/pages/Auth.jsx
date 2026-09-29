@@ -51,7 +51,7 @@ export default function Auth({ mode }) {
         {mode === 'register' && (
           <>
             <label className="field"><span>Username</span><input value={form.username} onChange={set('username')} autoComplete="username" required /></label>
-            <label className="field"><span>Display name</span><input value={form.displayName} onChange={set('displayName')} autoComplete="name" /></label>
+            <label className="field"><span>Display name</span><input value={form.displayName} onChange={set('displayName')} autoComplete="name" maxLength={40} /></label>
             <label className="field"><span>Email</span><input type="email" value={form.email} onChange={set('email')} autoComplete="email" required /></label>
           </>
         )}

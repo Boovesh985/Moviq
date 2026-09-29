@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, fmtRuntime } from '../api.js';
 import Poster from '../components/Poster.jsx';
@@ -61,23 +61,31 @@ export default function Film() {
   const [composing, setComposing] = useState(false);
   const [tab, setTab] = useState('popular');
 
-  const load = () => api.get(`/movies/${id}`).then(setData).catch((e) => setError(e.message));
-  useEffect(() => { setData(null); load(); window.scrollTo(0, 0); }, [id]);
+  const [actionError, setActionError] = useState('');
+  const current = useRef(id);
+  current.current = id;
+  // Responses for a film you've already navigated away from are dropped.
+  const load = () => api.get(`/movies/${id}`)
+    .then((d) => { if (current.current === id) setData(d); })
+    .catch((e) => { if (current.current === id) setError(e.message); });
+  useEffect(() => { setData(null); setError(''); setActionError(''); load(); window.scrollTo(0, 0); }, [id]);
 
   if (error) return <main className="journal page-pad"><p className="empty">{error}</p></main>;
   if (!data) return <main className="journal"><div className="film-banner skeleton" /></main>;
   const { movie, stats, me, friends, reviews, similar, insights } = data;
   const mine = me?.review;
 
-  const quickSave = async (patch) => {
-    await api.post('/reviews', {
-      movie_id: movie.id, rating: mine?.rating ?? null, liked: mine?.liked ?? false, body: mine?.body ?? '',
-      watched_on: mine?.watched_on?.slice(0, 10), rewatch: mine?.rewatch ?? false, author_spoiler: mine?.author_spoiler ?? false, ...patch,
-    });
-    load();
+  const act = async (fn) => {
+    setActionError('');
+    try { await fn(); await load(); } catch (e) { setActionError(e.message); }
   };
-  const toggleList = async () => { await api.post(`/watch/list/${movie.id}`); load(); };
-  const watched = !!mine || me?.progress?.completed;
+  const quickSave = (patch) => act(() => api.post('/reviews', {
+    movie_id: movie.id, rating: mine?.rating ?? null, liked: mine?.liked ?? false, body: mine?.body ?? '',
+    watched_on: mine?.watched_on?.slice(0, 10), rewatch: mine?.rewatch ?? false, author_spoiler: mine?.author_spoiler ?? false, ...patch,
+  }));
+  const toggleList = () => act(() => api.post(`/watch/list/${movie.id}`));
+  const watched = !!mine || !!me?.progress?.completed;
+  const toggleWatched = () => act(() => api.post(`/watch/${movie.id}/watched`, { watched: !watched }));
 
   return (
     <main className="journal film">
@@ -144,7 +152,8 @@ export default function Film() {
             </button>
             {movie.match != null && <p className="side-match"><span className="match">{movie.match}% match</span> for you</p>}
             <div className="side-actions">
-              <button className={watched ? 'on watch' : ''} onClick={() => api.post(`/watch/${movie.id}/watched`).then(load)} aria-pressed={watched}>
+              <button className={watched ? 'on watch' : ''} onClick={toggleWatched} aria-pressed={watched}
+                title={mine ? 'In your diary' : undefined}>
                 <Eye width={28} /><span>{watched ? 'Watched' : 'Watch'}</span>
               </button>
               <button className={mine?.liked ? 'on like' : ''} onClick={() => quickSave({ liked: !mine?.liked })} aria-pressed={!!mine?.liked}>
@@ -158,6 +167,7 @@ export default function Film() {
               <span>{mine?.rating ? 'Rated' : 'Rate'}</span>
               <StarInput value={mine?.rating ?? null} onChange={(v) => quickSave({ rating: v })} size={30} />
             </div>
+            {actionError && <p className="error-note" role="alert">{actionError}</p>}
             <button className="side-link" onClick={() => setComposing(true)}>{mine?.body ? 'Edit your review…' : 'Review or log…'}</button>
             <div className="side-where">
               <h4>Where to watch</h4>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
@@ -108,24 +108,36 @@ export default function ReviewCard({ review: initial, showFilm = false }) {
   const mine = user && review.author.id === user.id;
   const blurred = review.spoiler.sentences?.length > 0 && !review.spoiler.hidden;
 
-  const like = async () => {
+  // The page reloaded this review (e.g. the author just edited it): show the new version.
+  useEffect(() => {
+    setReview(initial);
+    setLikes(initial.likes);
+    setLiked(initial.liked_by_me);
+    setReported(initial.reported_by_me);
+  }, [initial]);
+
+  const attempt = (fn) => async (...args) => {
+    try { await fn(...args); } catch (e) { setNote(e.message); }
+  };
+  const like = attempt(async () => {
     const r = await api.post(`/reviews/${review.id}/like`);
     setLiked(r.liked);
     setLikes(r.likes);
-  };
-  const label = async (sentence, value, source = 'reader') => {
+  });
+  const sendLabel = async (sentence, value, source = 'reader') => {
     const r = await api.post(`/reviews/${review.id}/spoiler-label`, { sentence, label: value, source });
     setReview(r.review);
   };
-  const flagSentence = async (sentence) => {
-    await label(sentence, 1, 'flag');
+  const label = attempt(sendLabel);
+  const flagSentence = attempt(async (sentence) => {
+    await sendLabel(sentence, 1, 'flag');
     setFlagging(false);
     setNote('Thanks. That sentence is now blurred for other readers, and the Spoiler Shield will learn from it.');
-  };
-  const reportWhole = async () => {
+  });
+  const reportWhole = attempt(async () => {
     setReported((await api.post(`/reviews/${review.id}/report-spoiler`)).reported);
     setFlagging(false);
-  };
+  });
 
   return (
     <article className={`review ${showFilm ? 'with-film' : ''}`}>

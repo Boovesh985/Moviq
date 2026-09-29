@@ -3,7 +3,7 @@
 const ML_URL = process.env.ML_URL || 'http://localhost:8000';
 let warned = false;
 
-export async function ml(pathname, body, { timeout = 3000, fallback = null } = {}) {
+export async function ml(pathname, body, { timeout = 6000, fallback = null } = {}) {
   try {
     const res = await fetch(ML_URL + pathname, {
       method: body === undefined ? 'GET' : 'POST',
@@ -21,5 +21,6 @@ export async function ml(pathname, body, { timeout = 3000, fallback = null } = {
   }
 }
 
-// Tell the recommender new data arrived; it refits lazily on the next request.
-export const mlRefresh = () => ml('/refresh', {}, { timeout: 1000 });
+// Tell the recommender new data arrived. It refits in the background, except that the next request from
+// the person whose data changed waits for the refit, so it reflects what they just did.
+export const mlRefresh = (userId = null) => ml('/refresh', { user_id: userId }, { timeout: 1000 });

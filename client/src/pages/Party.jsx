@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, fmtRuntime } from '../api.js';
 import { useAuth } from '../auth.jsx';
@@ -13,7 +13,10 @@ function Landing() {
   const nav = useNavigate();
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
-  const create = async () => nav(`/group/${(await api.post('/rooms')).code}`);
+  const create = async () => {
+    setError('');
+    try { nav(`/group/${(await api.post('/rooms')).code}`); } catch (err) { setError(err.message); }
+  };
   const join = async (e) => {
     e.preventDefault();
     try {
@@ -110,12 +113,27 @@ function Voting({ room, reload }) {
   const pending = room.candidates.filter((c) => room.myVotes[c.id] === undefined);
   const current = pending[0];
   const done = room.candidates.length - pending.length;
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
 
   const vote = useCallback(async (v) => {
-    if (!current) return;
-    await api.post(`/rooms/${room.code}/vote`, { movie_id: current.id, vote: v });
-    reload();
-  }, [current, room.code, reload]);
+    if (!current || sending) return;   // one vote per card, even with key repeat or a double click
+    setSending(true);
+    setError('');
+    try {
+      await api.post(`/rooms/${room.code}/vote`, { movie_id: current.id, vote: v });
+      await reload();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSending(false);
+    }
+  }, [current, sending, room.code, reload]);
+
+  const finish = async () => {
+    setError('');
+    try { await api.post(`/rooms/${room.code}/finish`); reload(); } catch (e) { setError(e.message); }
+  };
 
   useEffect(() => {
     const onKey = (e) => {
@@ -133,6 +151,13 @@ function Voting({ room, reload }) {
         <h2 className="decide-h1">You’re done voting</h2>
         <p className="decide-sub">Waiting for everyone else to finish.</p>
         <MemberList members={room.members} total={room.candidates.length} />
+        {room.isHost && (
+          <>
+            <button className="btn btn-line btn-sm" onClick={finish}>Show results now</button>
+            <p className="party-hint">Someone gone quiet? Reveal the results from the votes so far.</p>
+          </>
+        )}
+        {error && <p className="error-note" role="alert">{error}</p>}
       </div>
     );
   }
@@ -162,6 +187,7 @@ function Voting({ room, reload }) {
         <button className="swipe-btn yes" onClick={() => vote(1)} aria-label="I’d watch it (right arrow)"><Check /></button>
       </div>
       <p className="swipe-keys">← nope · ↑ love · → yes</p>
+      {error && <p className="error-note" role="alert">{error}</p>}
     </div>
   );
 }
@@ -218,17 +244,27 @@ export default function Party() {
   const [room, setRoom] = useState(null);
   const [error, setError] = useState('');
 
+  const dead = useRef(false);   // room missing or closed to us: stop polling
+
   const reload = useCallback(() => {
-    if (!code) return;
-    api.get(`/rooms/${code}`).then(setRoom).catch(async (e) => {
+    if (!code || dead.current) return Promise.resolve();
+    return api.get(`/rooms/${code}`).then((r) => { setRoom(r); setError(''); }).catch(async (e) => {
       if (e.status === 403) { // opened an invite link: join, then load
-        await api.post('/rooms/join', { code }).then(() => api.get(`/rooms/${code}`).then(setRoom)).catch((j) => setError(j.message));
-      } else setError(e.message);
+        await api.post('/rooms/join', { code }).then(() => api.get(`/rooms/${code}`).then(setRoom)).catch((j) => {
+          if (j.status === 404 || j.status === 409) dead.current = true;
+          setError(j.message);
+        });
+      } else {
+        if (e.status === 404) dead.current = true;
+        setError(e.message);
+      }
     });
   }, [code]);
 
   useEffect(() => {
     setRoom(null);
+    setError('');
+    dead.current = false;
     reload();
     const t = setInterval(reload, 2500);
     return () => clearInterval(t);
@@ -237,7 +273,7 @@ export default function Party() {
   return (
     <main className="screen party">
       {!code && <Landing />}
-      {code && error && <div className="party-landing"><p className="error-note">{error}</p><Link className="btn btn-ghost" to="/group">Back</Link></div>}
+      {code && error && !room && <div className="party-landing"><p className="error-note">{error}</p><Link className="btn btn-ghost" to="/group">Back</Link></div>}
       {code && room && room.status === 'lobby' && <Lobby room={room} reload={reload} />}
       {code && room && room.status === 'voting' && <Voting room={room} reload={reload} me={user} />}
       {code && room && room.status === 'done' && <Results room={room} />}
