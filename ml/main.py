@@ -1,0 +1,167 @@
+"""Moviq ML service: recommendations, decide/group ranking, Spoiler Shield, sentiment,
+and the learner that keeps all of them training on live data."""
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+
+from learner import Learner
+from learning import Registry
+from recommender import Recommender
+from sentiment import SentimentModel
+from spoiler import SpoilerModel
+
+rec = Recommender()
+spoiler = SpoilerModel()
+sentiment = SentimentModel()
+learner = Learner(rec, spoiler, sentiment)
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    print(f"[spoiler] v{spoiler.version} ready {spoiler.load_or_train()}")
+    if sentiment.load():
+        print(f"[sentiment] v{sentiment.version} ready {sentiment.metrics}")
+    else:
+        print("[sentiment] no saved model yet; the learner will train it in the background")
+    rec.fit()
+    print(f"[recommender] fitted on {len(rec.ids)} films, {len(rec.user_index)} people")
+    learner.start()
+    yield
+
+
+app = FastAPI(title="Moviq ML", lifespan=lifespan)
+
+
+class TextIn(BaseModel):
+    text: str
+    review_id: int | None = None
+
+
+class TextsIn(BaseModel):
+    texts: list[str]
+
+
+class RecIn(BaseModel):
+    user_id: int
+    limit: int = 20
+    exclude_ids: list[int] = []
+
+
+class MatchIn(BaseModel):
+    user_id: int
+    movie_ids: list[int]
+
+
+class DecideIn(BaseModel):
+    user_id: int
+    max_runtime: int | None = None
+    moods: list[str] = []
+    company: str = "solo"
+    services: list[str] = []
+    only_available: bool = False
+    exclude_ids: list[int] = []
+
+
+class GroupIn(BaseModel):
+    user_ids: list[int] = Field(min_length=1)
+    limit: int = 15
+    max_runtime: int | None = None
+    moods: list[str] = []
+    family: bool = False
+
+
+@app.get("/health")
+def health():
+    return {"ok": True, "spoiler": spoiler.version, "sentiment": sentiment.version, "recommender": rec.weights_version,
+            "movies": len(getattr(rec, "ids", []))}
+
+
+@app.post("/refresh")
+def refresh():
+    rec.dirty = True
+    return {"ok": True}
+
+
+# ── Recommendations ─────────────────────────────────────────────────────
+@app.post("/recommend")
+def recommend(body: RecIn):
+    return rec.recommend(body.user_id, body.limit, body.exclude_ids)
+
+
+@app.post("/match")
+def match(body: MatchIn):
+    return rec.match(body.user_id, body.movie_ids)
+
+
+@app.get("/similar/{movie_id}")
+def similar(movie_id: int, limit: int = 12):
+    return rec.similar(movie_id, limit)
+
+
+@app.post("/decide")
+def decide(body: DecideIn):
+    return rec.decide(**body.model_dump())
+
+
+@app.post("/group")
+def group(body: GroupIn):
+    return rec.group(**body.model_dump())
+
+
+@app.get("/taste/{user_id}")
+def taste(user_id: int):
+    return rec.taste(user_id)
+
+
+# ── Text understanding ──────────────────────────────────────────────────
+@app.post("/analyze")
+def analyze(body: TextIn):
+    """Spoiler spans + sentiment + aspects for a review; human votes override the model."""
+    votes = learner.human_votes([body.review_id]).get(body.review_id) if body.review_id else None
+    return learner.analyze(body.text, votes)
+
+
+@app.post("/reviews/{review_id}/rescore")
+def rescore(review_id: int):
+    result = learner.rescore_review(review_id)
+    if result is None:
+        raise HTTPException(404, "No review text to score")
+    return result
+
+
+@app.post("/spoiler/analyze")
+def spoiler_analyze(body: TextIn):
+    return spoiler.analyze(body.text)
+
+
+@app.post("/spoiler/batch")
+def spoiler_batch(body: TextsIn):
+    return [spoiler.analyze(t) for t in body.texts]
+
+
+# ── Learning ────────────────────────────────────────────────────────────
+@app.get("/models")
+def models():
+    return {
+        "live": {
+            "spoiler": {"version": spoiler.version, "metrics": spoiler.metrics},
+            "sentiment": {"version": sentiment.version, "metrics": sentiment.metrics, "ready": sentiment.ready},
+            "recommender": {"version": rec.weights_version, "weights": rec.weights},
+        },
+        "learner": learner.status(),
+        "history": Registry.history(80),
+    }
+
+
+@app.post("/learn/{model}")
+def learn(model: str):
+    if model not in ("spoiler", "sentiment", "recommender"):
+        raise HTTPException(404, "Unknown model")
+    if learner.busy.locked():
+        raise HTTPException(409, f"The learner is busy ({learner.activity}). Try again shortly.")
+    result = learner.run(model, "manual retrain")
+    learner.score_stale_reviews()
+    return result

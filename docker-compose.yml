@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: moviq-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: moviq
+      POSTGRES_PASSWORD: moviq
+      POSTGRES_DB: moviq
+    ports:
+      - "5544:5432"
+    volumes:
+      - moviq-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moviq"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  moviq-pgdata:

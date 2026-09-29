@@ -1,0 +1,36 @@
+/* Moviq has two rooms under one roof:
+   the Screen (Netflix-style browsing, near-black, marquee red)
+   and the Journal (Letterboxd-style film pages and reviews, slate blue, ink-green stars). */
+:root {
+  /* Screen */
+  --ink: #0a0a0c;
+  --ink-2: #141418;
+  --ink-3: #1f1f25;
+  --marquee: #f23d2e;
+  --marquee-dim: #b92a1f;
+  --paper: #f5f3ef;
+  --fog: #a3a3ad;
+  --match: #46d369;
+
+  /* Journal */
+  --slate: #14181d;
+  --slate-2: #1c232b;
+  --slate-3: #2c3440;
+  --slate-line: #303b48;
+  --slate-text: #9aabbd;
+  --slate-bright: #dfe7ee;
+  --star: #3fd27f;
+  --heart: #ff8a3d;
+  --link: #5cc0f2;
+  --spoiler: #ffb224;
+
+  /* Type */
+  --display: 'Bricolage Grotesque', 'Arial Narrow', system-ui, sans-serif;
+  --sans: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --serif: 'Newsreader', Georgia, 'Times New Roman', serif;
+
+  --gutter: clamp(16px, 4vw, 60px);
+  --radius: 6px;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  color-scheme: dark;
+}

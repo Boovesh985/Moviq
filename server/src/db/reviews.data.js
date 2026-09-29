@@ -1,0 +1,76 @@
+// Demo review content. Handwritten reviews include deliberate spoilers (some tagged by the
+// author, most not) so the Spoiler Shield can be seen working on real-looking text.
+
+export const handwrittenReviews = [
+  { title: 'Fight Club', rating: 4.5, body: 'Rewatched it knowing that Tyler was never real and only existed in the narrator’s head, and every scene plays completely differently. The fact that he was fighting himself in the parking lot is hilarious now.' },
+  { title: 'Shutter Island', rating: 4, body: 'Moody, loud and gloriously overcooked. The lighthouse reveal that Teddy is actually a patient who invented the whole investigation hit me hard. That last line on the steps is haunting.' },
+  { title: 'Se7en', rating: 5, body: 'The rain never stops and neither does the dread. When the box arrives in the desert and Mills finally pulls the trigger on John Doe, I just sat there in silence.' },
+  { title: 'The Empire Strikes Back', rating: 5, body: 'Vader being Luke’s father is still the greatest twist ever put on film. Also Yoda is perfect.', authorSpoiler: true },
+  { title: 'The Prestige', rating: 4.5, body: 'Bale and Jackman are both brilliant. Knowing that Borden was twins all along recontextualises every single scene with him. Watch it twice.' },
+  { title: 'Gone Girl', rating: 4, body: 'Rosamund Pike is terrifying. Amy faking her own death and framing Nick with the diary is pure evil genius, and she gets away with it at the end.' },
+  { title: 'Parasite', rating: 5, body: 'Genuinely one of the best films of the century. The tonal control is unreal: it is a comedy, then a heist, then something else entirely. Go in knowing as little as possible.' },
+  { title: 'Parasite', rating: 4.5, body: 'The moment the old housekeeper rings the doorbell and we discover her husband has been living in the secret bunker, the film flips completely. The birthday party ending was brutal.' },
+  { title: 'Oldboy', rating: 4.5, body: 'That hallway fight is a single take and it is incredible. Finding out that Mi-do is actually his daughter made me feel physically sick.' },
+  { title: 'Arrival', rating: 5, body: 'The sound design alone deserves a medal. Realising the flashbacks were actually flash-forwards, and that she chooses to have her daughter knowing she will die, destroyed me.' },
+  { title: 'Arrival', rating: 4.5, body: 'Quiet, patient science fiction that trusts its audience. Amy Adams carries the whole thing with barely a raised voice. The score by Jóhann Jóhannsson is haunting.' },
+  { title: 'Interstellar', rating: 5, body: 'Zimmer’s organ score is enormous and the docking scene is one of the most tense things I have ever seen in a cinema. Cooper ends up inside the tesseract behind Murph’s bookshelf, so he was the ghost all along. Bring tissues.' },
+  { title: 'Get Out', rating: 4.5, body: 'Sharp, funny and deeply unsettling. The teacup scene is iconic. Daniel Kaluuya’s face does so much work.' },
+  { title: 'Get Out', rating: 4, body: 'Turns out the Armitage family has been auctioning off Black bodies so old white people can transplant their brains into them. Rose was in on it from the start.' },
+  { title: 'Knives Out', rating: 4.5, body: 'A sweater-wearing whodunnit that is actually about something. Daniel Craig’s accent is a delight and the whole cast is having a ball.' },
+  { title: 'Knives Out', rating: 4, body: 'Harlan actually killed himself because he thought Marta gave him the wrong medicine, and Ransom was the one who switched the vials. Loved the donut hole speech.' },
+  { title: 'Everything Everywhere All at Once', rating: 5, body: 'Hot dog fingers. Googly eyes. A bagel with everything in it. I laughed, I cried, I called my mum. Ke Huy Quan deserves everything.' },
+  { title: 'Hereditary', rating: 4, body: 'Toni Collette gives one of the great horror performances. I will never think about telephone poles the same way again after what happens to Charlie in the car.' },
+  { title: 'Past Lives', rating: 5, body: 'So restrained and so devastating. The final walk to the Uber is the best scene of the year. A film about the lives we don’t get to live.' },
+  { title: 'Whiplash', rating: 5, body: 'Two hours of pure tension. Miles Teller’s hands bleed, J.K. Simmons throws chairs, and the final nine minutes on stage are among the best endings I have ever seen. No spoilers, just watch it.' },
+  { title: 'The Dark Knight', rating: 5, body: 'Heath Ledger is magnetic. The interrogation room scene, the hospital, the ferries. Harvey Dent dies at the end and Batman takes the blame so Gotham can keep its hero.' },
+  { title: 'Inception', rating: 4.5, body: 'Big, loud, clever blockbuster filmmaking. The hallway fight still holds up. Whether the top falls is still being argued about in my group chat.' },
+  { title: 'Spirited Away', rating: 5, body: 'Every frame could hang in a gallery. The train across the water is the most peaceful sequence in animation. Perfect for a rainy Sunday.' },
+  { title: 'Paddington 2', rating: 5, body: 'A perfect film. If we are kind and polite, the world will be right. Hugh Grant has never been better.' },
+  { title: 'Oppenheimer', rating: 4.5, body: 'Three hours that feel like ninety minutes. The Trinity test sequence, with the silence before the sound hits, is extraordinary filmmaking.' },
+  { title: 'La La Land', rating: 4, body: 'Gorgeous colours, catchy songs. They don’t end up together and the epilogue shows the life they could have had together. I was not okay.' },
+  { title: 'Train to Busan', rating: 4.5, body: 'Relentless and surprisingly emotional. Ma Dong-seok punching his way down a carriage is the most crowd-pleasing thing I have seen in years.' },
+  { title: 'Vikram', rating: 4, body: 'Pure mass entertainment with a lot of style. The interval block had the whole theatre screaming. Anirudh’s score is on fire.' },
+  { title: 'Jai Bhim', rating: 5, body: 'Angry, necessary cinema. Suriya underplays it beautifully and lets Lijomol Jose carry the emotional weight. Hard to watch, harder to forget.' },
+  { title: 'Night of the Living Dead', rating: 4, body: 'Still creepy almost sixty years later, and it’s free to watch here. Shot on nothing, and it invented a whole genre.' },
+  { title: 'Night of the Living Dead', rating: 4.5, body: 'Ben survives the whole night only to be shot by the posse at dawn, who mistake him for one of the dead. That ending is bleak and furious.' },
+  { title: 'Sherlock Jr.', rating: 4.5, body: 'Forty-five minutes of pure invention. The scene where he steps into the movie screen is a hundred years old and still feels like magic.' },
+  { title: 'Aftersun', rating: 5, body: 'A film that quietly rearranges itself in your head for days afterwards. Paul Mescal is heartbreaking. The Under Pressure scene.' },
+];
+
+// Building blocks for the generated demo reviews (spoiler-free on purpose).
+export const reviewPhrases = {
+  open: {
+    high: ['An absolute favourite.', 'This one stuck with me for days.', 'Instantly added to my all-time list.', 'Wow. Just wow.', 'Everything I want from a film.', 'Watched this again and it only gets better.'],
+    mid: ['Solid, if not quite the masterpiece people say.', 'Enjoyed it more than I expected.', 'Good film, a few rough edges.', 'A decent watch.', 'Some great moments, some flat ones.'],
+    low: ['Not for me, unfortunately.', 'I really wanted to like this.', 'Couldn’t connect with it at all.', 'This dragged badly.', 'Overhyped, in my opinion.'],
+  },
+  mood: {
+    'feel-good': ['Left me grinning like an idiot.', 'Pure comfort viewing.'],
+    funny: ['Laughed out loud more than once.', 'The jokes land way more often than not.'],
+    romantic: ['The chemistry between the leads is electric.', 'Swooning, honestly.'],
+    'mind-bending': ['My brain hurts in the best way.', 'You’ll want to talk about it the moment it ends.'],
+    thrilling: ['My heart rate did not come down the whole time.', 'The tension is expertly built.'],
+    dark: ['Bleak but compelling.', 'Heavy stuff. Pick your evening carefully.'],
+    scary: ['Watched it with the lights on and still jumped.', 'Genuinely unsettling atmosphere.'],
+    emotional: ['I cried. Twice.', 'It hits hard emotionally without being manipulative.'],
+    epic: ['The scale is staggering; see it on the biggest screen you can.', 'A proper big-screen experience.'],
+    cozy: ['Perfect for a rainy evening under a blanket.', 'Warm and gentle in the best way.'],
+    inspiring: ['Made me want to go out and do something.', 'Uplifting without being corny.'],
+    'action-packed': ['The set pieces are ridiculous in the best way.', 'Action choreography you can actually follow.'],
+  },
+  cast: {
+    high: ['{cast} is phenomenal here.', '{cast} gives a career-best performance.'],
+    mid: ['{cast} is good but the script lets them down.', '{cast} does a lot with a thin role.'],
+    low: ['Even {cast} can’t save it.', '{cast} seems bored.'],
+  },
+  craft: {
+    high: ['The cinematography is stunning.', 'The score is incredible.', 'Tight editing, not a wasted scene.'],
+    mid: ['The pacing sags in the middle.', 'Looks great, but the writing is uneven.'],
+    low: ['At least twenty minutes too long.', 'The dialogue is clunky.'],
+  },
+  close: {
+    high: ['Can’t recommend it enough.', 'Go watch it.', '★★★★★ energy.'],
+    mid: ['Worth a watch.', 'Glad I finally saw it.'],
+    low: ['Skip it.', 'One and done.'],
+  },
+};
