@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, useParams } from 'react-router-dom';
 import { api } from '../api.js';
+import { useLoad } from '../lib/useLoad.js';
 import Avatar from '../components/Avatar.jsx';
 import Poster from '../components/Poster.jsx';
 import ReviewCard from '../components/ReviewCard.jsx';
@@ -27,8 +28,8 @@ function TasteDNA({ taste }) {
 }
 
 function Diary({ username }) {
-  const [items, setItems] = useState(null);
-  useEffect(() => { api.get(`/users/${username}/diary`).then((d) => setItems(d.items)); }, [username]);
+  const { data: items, error } = useLoad(() => api.get(`/users/${username}/diary`).then((d) => d.items), [username]);
+  if (error) return <p className="empty">{error}</p>;
   if (!items) return null;
   if (!items.length) return <p className="empty">No films logged yet.</p>;
   let lastMonth = '';
@@ -58,13 +59,14 @@ function Diary({ username }) {
 }
 
 function Tab({ username, tab }) {
-  const [data, setData] = useState(null);
-  useEffect(() => {
-    setData(null);
-    if (tab === 'films' || tab === 'watchlist') api.get(`/users/${username}/${tab}`).then((d) => setData(d.items));
-    if (tab === 'reviews') api.get(`/users/${username}/reviews`).then((d) => setData(d.reviews));
+  // Switching tabs quickly: a slow response for the previous tab is dropped.
+  const { data, error } = useLoad(async () => {
+    if (tab === 'films' || tab === 'watchlist') return (await api.get(`/users/${username}/${tab}`)).items;
+    if (tab === 'reviews') return (await api.get(`/users/${username}/reviews`)).reviews;
+    return null;
   }, [username, tab]);
   if (tab === 'diary') return <Diary username={username} />;
+  if (error) return <p className="empty">{error}</p>;
   if (!data) return null;
   if (!data.length) return <p className="empty">{tab === 'watchlist' ? 'Nothing on the watchlist yet.' : 'Nothing here yet.'}</p>;
   if (tab === 'reviews') return data.map((r) => <ReviewCard key={r.id} review={r} showFilm />);

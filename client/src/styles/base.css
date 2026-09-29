@@ -108,5 +108,10 @@ img { display: block; max-width: 100%; }
 .icon-btn.on { background: #fff; color: #000; border-color: #fff; }
 
 .error-note { color: #ff8f7a; font-size: 14px; }
+.toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60;
+  max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 6px;
+  background: var(--ink-3); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
 .empty { color: var(--fog); padding: 40px 0; text-align: center; }
 .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }

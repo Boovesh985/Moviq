@@ -6,12 +6,17 @@ export class ApiError extends Error {
 }
 
 async function request(method, url, body) {
-  const res = await fetch(`/api${url}`, {
-    method,
-    credentials: 'same-origin',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(`/api${url}`, {
+      method,
+      credentials: 'same-origin',
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new ApiError(0, 'Couldn’t reach Moviq. Check your connection and try again.');
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, data.error || 'Something went wrong. Try again.');
   return data;

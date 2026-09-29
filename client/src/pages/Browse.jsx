@@ -19,13 +19,19 @@ export default function Browse() {
     }).catch((e) => setError(e.message));
   }, []);
 
+  const [notice, setNotice] = useState('');
   const toggleList = async (id) => {
-    const { onWatchlist } = await api.post(`/watch/list/${id}`);
-    setWatchlist((s) => {
-      const n = new Set(s);
-      onWatchlist ? n.add(id) : n.delete(id);
-      return n;
-    });
+    try {
+      const { onWatchlist } = await api.post(`/watch/list/${id}`);
+      setWatchlist((s) => {
+        const n = new Set(s);
+        onWatchlist ? n.add(id) : n.delete(id);
+        return n;
+      });
+    } catch (e) {
+      setNotice(e.message);
+      setTimeout(() => setNotice(''), 4000);
+    }
   };
 
   if (error) return <main className="screen"><p className="empty" style={{ paddingTop: 120 }}>{error}</p></main>;
@@ -58,6 +64,7 @@ export default function Browse() {
       )}
 
       <div className="rows">
+        {notice && <p className="error-note toast" role="alert">{notice}</p>}
         <div className="shortcuts">
           <Link to="/decide" className="shortcut">
             <Clock /><span><strong>Can’t choose?</strong> Get three picks in 60 seconds</span>

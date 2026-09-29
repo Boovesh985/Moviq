@@ -17,9 +17,15 @@ import Models from './pages/Models.jsx';
 import Import from './pages/Import.jsx';
 
 function Private({ children }) {
-  const { user } = useAuth();
+  const { user, offline } = useAuth();
   const loc = useLocation();
-  if (user === undefined) return <div className="page-loading" aria-label="Loading" />;
+  if (user === undefined) {
+    return (
+      <div className="page-loading" aria-label="Loading">
+        {offline && <p className="empty" role="status" style={{ paddingTop: 140 }}>Can’t reach Moviq right now. Trying again…</p>}
+      </div>
+    );
+  }
   if (!user) return <Navigate to="/login" state={{ from: loc.pathname }} replace />;
   return children;
 }

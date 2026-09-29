@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../api.js';
+import { useLoad } from '../lib/useLoad.js';
 import { PosterStrip } from './Journal.jsx';
 import { Stars } from '../components/Stars.jsx';
 
@@ -8,10 +9,10 @@ export default function Films() {
   const [params, setParams] = useSearchParams();
   const genre = params.get('genre') || 'Drama';
   const [genres, setGenres] = useState([]);
-  const [items, setItems] = useState(null);
+  // Switching genres quickly: only the latest genre's films are shown.
+  const { data: items, error } = useLoad(() => api.get(`/movies/genre/${encodeURIComponent(genre)}`).then((d) => d.items), [genre]);
 
-  useEffect(() => { api.get('/movies/genres').then(setGenres); }, []);
-  useEffect(() => { setItems(null); api.get(`/movies/genre/${encodeURIComponent(genre)}`).then((d) => setItems(d.items)); }, [genre]);
+  useEffect(() => { api.get('/movies/genres').then(setGenres).catch(() => {}); }, []);
 
   return (
     <main className="journal page-pad">
@@ -24,6 +25,8 @@ export default function Films() {
           </button>
         ))}
       </div>
+      {error && <p className="empty">{error}</p>}
+      {items && !items.length && <p className="empty">No films in this genre yet.</p>}
       {items && (
         <PosterStrip items={items} caption={(m) => (
           <>{m.avg_rating && <Stars value={Math.round(m.avg_rating * 2) / 2} />}{m.match != null && <span className="match" style={{ fontSize: 11 }}>{m.match}%</span>}</>

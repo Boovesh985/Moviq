@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api.js';
+import { useLoad } from '../lib/useLoad.js';
 import { useAuth } from '../auth.jsx';
 import Poster from '../components/Poster.jsx';
 import Avatar from '../components/Avatar.jsx';
@@ -23,8 +23,8 @@ export function PosterStrip({ items, caption }) {
 
 export default function Journal() {
   const { user } = useAuth();
-  const [d, setD] = useState(null);
-  useEffect(() => { api.get('/journal').then(setD); }, []);
+  const { data: d, error } = useLoad(() => api.get('/journal'), []);
+  if (error) return <main className="journal page-pad"><p className="empty">{error}</p></main>;
   if (!d) return <main className="journal" />;
 
   return (

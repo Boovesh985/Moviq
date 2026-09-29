@@ -15,13 +15,15 @@ export default function Settings() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.get('/users/services').then(setServices);
-    api.get(`/users/${user.username}`).then((p) => setFavs(p.favorites));
+    api.get('/users/services').then(setServices).catch((e) => setError(e.message));
+    api.get(`/users/${user.username}`).then((p) => setFavs(p.favorites)).catch((e) => setError(e.message));
   }, [user.username]);
   useEffect(() => {
     if (q.trim().length < 2) return setHits([]);
-    const t = setTimeout(() => api.get(`/movies/search?q=${encodeURIComponent(q)}`).then((d) => setHits(d.results.slice(0, 6))), 250);
-    return () => clearTimeout(t);
+    let live = true;   // typing on: results for an older query never replace newer ones
+    const t = setTimeout(() => api.get(`/movies/search?q=${encodeURIComponent(q)}`)
+      .then((d) => live && setHits(d.results.slice(0, 6))).catch(() => {}), 250);
+    return () => { live = false; clearTimeout(t); };
   }, [q]);
 
   const toggleService = (s) => setForm((f) => ({ ...f, services: f.services.includes(s) ? f.services.filter((x) => x !== s) : [...f.services, s] }));
