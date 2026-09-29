@@ -1,5 +1,12 @@
 # Moviq
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+
 Watch, review and decide in one place. Moviq combines Netflix-style browsing and streaming with a Letterboxd-style film diary, and adds three features neither has:
 
 - **Spoiler Shield**: an ML model reads every review sentence by sentence and blurs only the sentences that give the plot away. Writers see a live warning as they type, and readers can reveal a blurred sentence with one click. Every "was this a spoiler?" answer becomes training data.
@@ -223,3 +230,20 @@ ml/
   main.py (FastAPI), learner.py (background loop), learning.py (gated retraining + registry)
   recommender.py, spoiler.py, sentiment.py, evaluate.py, download_data.py
 ```
+
+## Acknowledgements
+
+- [GroupLens](https://grouplens.org/) for the MovieLens dataset — cite Harper & Konstan (2015)
+- [Stanford AI Lab](https://ai.stanford.edu/~amaas/data/sentiment/) for the IMDb review dataset — Maas et al. (2011)
+- [Mengting Wan et al.](https://mengtingwan.github.io/data/goodreads.html) for the Goodreads spoiler dataset — Wan et al. (2019)
+- [TMDB](https://www.themoviedb.org/) for film metadata and user reviews (not endorsed or certified by TMDB)
+- [Internet Archive](https://archive.org/) for public-domain film sources
+
+## Author
+
+**Booveshwaran T** — [@Boovesh985](https://github.com/Boovesh985)
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
