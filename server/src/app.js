@@ -37,7 +37,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 // The client calls this on load. On a free host the ML service sleeps when idle, and this request is what
 // starts waking it, so recommendations are ready by the time someone reaches them.
 app.get('/api/wake', async (_req, res) => {
-  res.json({ ml: !!(await ml('/health', undefined, { timeout: 2500 })) });
+  res.json({ ml: !!(await ml('/health', undefined, { timeout: 2500, probe: true })) });
 });
 
 // Postgres errors that mean the request itself was bad (a malformed id or date, a film that doesn't exist).
