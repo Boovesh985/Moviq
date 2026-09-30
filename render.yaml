@@ -19,5 +19,7 @@ services:
         sync: false
       - key: AUTO_RETRAIN        # a free instance has a tenth of a CPU: retrain only on request
         value: "0"
+      - key: REFIT_INTERVAL      # a full refit takes ~2 min here; live profiles keep people current meanwhile
+        value: "900"
       - key: MALLOC_ARENA_MAX    # stops glibc reserving memory per thread (free instances have 512 MB)
         value: "2"

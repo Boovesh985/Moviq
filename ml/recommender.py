@@ -34,6 +34,10 @@ DB_URL = os.environ.get("DATABASE_URL", "postgres://moviq:moviq@localhost:5544/m
 BAYES_C = 5          # pseudo-ratings pulling small samples toward the global mean
 SHRINK = 5           # co-rating shrinkage for collaborative similarities
 FACTORS = 48         # latent dimensions for PureSVD
+# Minimum seconds between background refits. A refit takes ~1.5 s on a laptop but ~2 minutes on a free
+# instance (a tenth of a CPU), where it slows every request while it runs; people who just acted are
+# served from live profiles in the meantime, so refits can be rare there.
+REFIT_INTERVAL = float(os.environ.get("REFIT_INTERVAL", 3))
 FAMILY_SAFE = {"G", "PG", "PG-13"}
 SIGNALS = ("content", "collab", "latent", "crowd")
 DEFAULT_WEIGHTS = {"content": 0.35, "collab": 0.15, "latent": 0.35, "crowd": 0.15}
@@ -76,9 +80,12 @@ def serving(fn):
 
 class Recommender:
     # Fitted state that fit() swaps in as a whole; everything else (locks, learned weights) stays put.
-    KEEP = ("lock", "refit_lock", "weights", "weights_version", "dirty_at", "changed_users")
+    KEEP = ("lock", "refit_lock", "weights", "weights_version", "dirty_at", "changed_users", "serving")
 
-    def __init__(self):
+    def __init__(self, serving: bool = False):
+        # Only the instance answering requests reads live profiles; evaluation copies must not
+        # (they hold ratings out on purpose, and a live read would see them).
+        self.serving = serving
         self.lock = threading.RLock()        # held while serving a request or swapping in a refit
         self.refit_lock = threading.Lock()   # one refit at a time
         self.fitted_at = 0.0
@@ -206,16 +213,17 @@ class Recommender:
 
     def ensure_fresh(self, user_ids=()):
         """Serve the current model and refit in the background when data has changed, so requests never
-        wait on a refit. The exception is the person who just changed their own data (rated a film,
-        finished onboarding): their next request waits for a fit, so it reflects what they just did."""
-        if self.fitted_at == 0 or self.changed_users.intersection(user_ids):
-            with self.refit_lock:   # waits for a refit already in flight, then checks again
-                if self.fitted_at == 0 or self.changed_users.intersection(user_ids):
+        wait on a refit. Someone who just changed their own data (rated a film, finished onboarding) is
+        scored from a live profile read from the database (see profile()), so their next request already
+        reflects it."""
+        if self.fitted_at == 0:
+            with self.refit_lock:
+                if self.fitted_at == 0:
                     self.fit()
             return
         stale = time.time() - self.fitted_at
         dirty = self.dirty_at > self.fitted_at
-        if ((dirty and stale > 3) or stale > 300) and not self.refit_lock.locked():
+        if ((dirty and stale > REFIT_INTERVAL) or stale > max(300, REFIT_INTERVAL)) and not self.refit_lock.locked():
             threading.Thread(target=self._refit_in_background, daemon=True).start()
 
     def _refit_in_background(self):
@@ -229,7 +237,61 @@ class Recommender:
             self.refit_lock.release()
 
     # ── scoring ───────────────────────────────────────────────────────────
+    def live_rows(self, user_id: int):
+        """This person's ratings, likes, watches and watchlist straight from the database (a few ms)."""
+        with psycopg.connect(DB_URL, prepare_threshold=None) as conn, conn.cursor() as cur:
+            cur.execute("SELECT movie_id, rating::float, liked, sentiment FROM reviews WHERE user_id = %s", (user_id,))
+            reviews = cur.fetchall()
+            cur.execute("SELECT movie_id FROM watch_history WHERE user_id = %s", (user_id,))
+            watched = [r[0] for r in cur.fetchall()]
+            cur.execute("SELECT movie_id FROM watchlist WHERE user_id = %s", (user_id,))
+            watchlist = [r[0] for r in cur.fetchall()]
+        return reviews, watched, watchlist
+
+    def live_profile(self, user_id: int) -> Profile:
+        """The same profile the fitted model would give, built from live rows, against the current item model."""
+        n = len(self.ids)
+        w = np.zeros(n)
+        seen = np.zeros(n, dtype=bool)
+        centred, ratings, liked = {}, {}, set()
+        reviews, watched, watchlist = self.live_rows(user_id)
+        rated = [r for _, r, _, _ in reviews if r is not None]
+        mu = (sum(rated) + 3 * self.global_mean) / (len(rated) + 3)
+        watched_idx = {self.index[m] for m in watched if m in self.index}
+        for mid, rating, like, sentiment in reviews:
+            j = self.index.get(mid)
+            if j is None:
+                continue
+            seen[j] = True
+            if rating is not None:
+                ratings[j] = rating
+                centred[j] = rating - mu
+                w[j] = (rating - mu) / 2
+            elif sentiment is not None and j in watched_idx:   # wrote a review but gave no stars
+                implied = 0.5 + 4.5 * sentiment
+                centred[j] = 0.6 * (implied - mu)
+                w[j] += (implied - mu) / 2
+            if like:
+                w[j] += 0.35
+                liked.add(j)
+        reviewed = {self.index[m] for m, _, _, s in reviews if m in self.index and s is not None}
+        for j in watched_idx:
+            seen[j] = True
+            if j not in ratings and j not in reviewed:
+                w[j] += 0.15                 # finished without rating: mild positive
+        for m in watchlist:
+            if m in self.index:
+                w[self.index[m]] += 0.2
+        n_ratings = sum(1 for j in centred if j in ratings)
+        return Profile(w, centred, seen, n_ratings, ratings, liked)
+
     def profile(self, user_id: int) -> Profile:
+        # People whose data changed since the last fit, or who aren't in it yet, are read live.
+        if self.serving and (user_id in self.changed_users or (user_id not in self.user_index and self.fitted_at)):
+            try:
+                return self.live_profile(user_id)
+            except Exception as e:  # database hiccup: fall back to what the model knows
+                print(f"[recommender] live profile failed for {user_id}: {e}")
         n = len(self.ids)
         w = np.zeros(n)
         seen = np.zeros(n, dtype=bool)

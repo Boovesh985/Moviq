@@ -17,7 +17,7 @@ from recommender import Recommender
 from sentiment import SentimentModel
 from spoiler import SpoilerModel
 
-rec = Recommender()
+rec = Recommender(serving=True)
 spoiler = SpoilerModel()
 sentiment = SentimentModel()
 learner = Learner(rec, spoiler, sentiment)
