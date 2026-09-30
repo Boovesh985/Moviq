@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth.jsx';
 import { api } from '../api.js';
 import Poster from '../components/Poster.jsx';
@@ -7,7 +7,9 @@ import { Logo } from '../components/Icons.jsx';
 
 export default function Auth({ mode }) {
   const { user, login, register, guest } = useAuth();
-  const nav = useNavigate();
+  // Where to go once signed in: new accounts start at onboarding. Redirecting through this one <Navigate>
+  // (instead of calling navigate() after sign-in) avoids two redirects racing each other.
+  const [next, setNext] = useState(null);
   const loc = useLocation();
   const [form, setForm] = useState({ login: '', password: '', username: '', email: '', displayName: '' });
   const [error, setError] = useState('');
@@ -18,7 +20,7 @@ export default function Auth({ mode }) {
     api.get('/movies/onboarding').then((d) => setWall(d.items)).catch(() => {});
   }, []);
 
-  if (user) return <Navigate to={loc.state?.from || '/'} replace />;
+  if (user) return <Navigate to={next || loc.state?.from || '/'} replace />;
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   const submit = async (e, override) => {
@@ -28,12 +30,12 @@ export default function Auth({ mode }) {
     try {
       if (mode === 'login') {
         await login(override?.login ?? form.login, override?.password ?? form.password);
-        nav(loc.state?.from || '/');
       } else {
+        setNext('/welcome');
         await register({ username: form.username, email: form.email, password: form.password, displayName: form.displayName });
-        nav('/welcome');
       }
     } catch (err) {
+      setNext(null);
       setError(err.message);
       setBusy(false);
     }
@@ -44,9 +46,10 @@ export default function Auth({ mode }) {
     setBusy(true);
     setError('');
     try {
+      setNext('/welcome');
       await guest();
-      nav('/welcome');
     } catch (err) {
+      setNext(null);
       setError(err.message);
       setBusy(false);
     }
