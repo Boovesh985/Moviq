@@ -62,6 +62,7 @@ class RecIn(BaseModel):
     user_id: int
     limit: int = 20
     exclude_ids: list[int] = []
+    with_match: bool = False
 
 
 class MatchIn(BaseModel):
@@ -106,7 +107,7 @@ def refresh(body: RefreshIn | None = None):
 # ── Recommendations ─────────────────────────────────────────────────────
 @app.post("/recommend")
 def recommend(body: RecIn):
-    return rec.recommend(body.user_id, body.limit, body.exclude_ids)
+    return rec.recommend(body.user_id, body.limit, body.exclude_ids, body.with_match)
 
 
 @app.post("/match")

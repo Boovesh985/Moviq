@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { one, many } from '../db/pool.js';
 import { requireAuth, HttpError, intParam } from '../middleware/auth.js';
 import { ml } from '../lib/ml.js';
-import { CARD, CARD_FROM, cardsByIds, withMatch, withMatchRows } from '../lib/movies.js';
+import { CARD, CARD_FROM, cardsByIds, withMatch } from '../lib/movies.js';
 import { fetchReviews } from '../lib/reviews.js';
 import { filmInsights } from '../lib/insights.js';
 
@@ -22,14 +22,22 @@ export async function trending(limit = 10) {
 }
 const trendingIds = async (limit = 10) => (await trending(limit)).ids;
 
-// Browse page rows (Netflix-style)
+// Browse page rows (Netflix-style). The ML service can be slow on a free host, so its calls run in
+// parallel with everything else, and /recommend returns match scores for the whole catalogue so no
+// second call is needed to label the rows.
+const GENRE_ROWS = [['Sci-Fi', 'Sci-fi & mind-benders'], ['Comedy', 'Comedies'], ['Horror', 'Horror'], ['Romance', 'Romance'],
+  ['Crime', 'Crime & thrillers'], ['Animation', 'Animation for everyone']];
+
 r.get('/home', requireAuth, async (req, res) => {
   const uid = req.user.id;
-  const me = await one('SELECT display_name FROM users WHERE id=$1', [uid]);
-  const rows = [];
+  // "Because you liked X": the user's most recent high rating, looked up first so /similar can run alongside /recommend
+  const anchorQuery = one(`SELECT m.id, m.title FROM reviews r JOIN movies m ON m.id = r.movie_id
+                           WHERE r.user_id=$1 AND (r.rating >= 4 OR r.liked) ORDER BY r.created_at DESC LIMIT 1`, [uid]);
+  const similarQuery = anchorQuery.then((a) => (a ? ml(`/similar/${a.id}?limit=16`, undefined, { fallback: [] }) : []));
 
-  const [recs, trend, continueRows, freeRows, topRated, listRows, friends] = await Promise.all([
-    ml('/recommend', { user_id: uid, limit: 24 }, { fallback: null }),
+  const [me, recs, trend, continueRows, freeRows, topRated, listRows, friends, anchor, similar, genreRows] = await Promise.all([
+    one('SELECT display_name FROM users WHERE id=$1', [uid]),
+    ml('/recommend', { user_id: uid, limit: 24, with_match: true }, { fallback: null }),
     trending(10),
     many(`SELECT ${CARD}, w.position_seconds, w.duration_seconds FROM watch_history w JOIN ${CARD_FROM} ON m.id = w.movie_id
           WHERE w.user_id=$1 AND NOT w.completed AND w.position_seconds > 30 ORDER BY w.last_watched_at DESC LIMIT 12`, [uid]),
@@ -41,42 +49,37 @@ r.get('/home', requireAuth, async (req, res) => {
           JOIN ${CARD_FROM} ON m.id = r.movie_id
           WHERE f.follower_id=$1 AND r.rating >= 4 AND r.created_at > NOW() - INTERVAL '120 days'
           GROUP BY m.id, s.avg_rating, s.n_ratings ORDER BY COUNT(*) DESC, last DESC LIMIT 20`, [uid]),
+    anchorQuery,
+    similarQuery,
+    Promise.all(GENRE_ROWS.map(([g]) => many(`SELECT ${CARD} FROM ${CARD_FROM} WHERE $1 = ANY(m.genres) ORDER BY m.popularity DESC LIMIT 20`, [g]))),
   ]);
 
-  let picks = [];
-  if (recs?.length) {
-    const cards = await cardsByIds(recs.map((x) => x.movie_id));
-    const reasons = new Map(recs.map((x) => [x.movie_id, x.reasons]));
-    picks = cards.map((c) => ({ ...c, reason: reasons.get(c.id)?.[0] }));
-  } else {
-    picks = await cardsByIds(await trendingIds(20));
-  }
+  const picked = recs?.picks ?? [];
+  const [pickCards, trendCards, similarCards] = await Promise.all([
+    cardsByIds(picked.length ? picked.map((x) => x.movie_id) : await trendingIds(20)),
+    cardsByIds(trend.ids),
+    cardsByIds(similar),
+  ]);
+  const reasons = new Map(picked.map((x) => [x.movie_id, x.reasons]));
+  const picks = pickCards.map((c) => ({ ...c, reason: reasons.get(c.id)?.[0] }));
 
+  const rows = [];
   if (continueRows.length) rows.push({ id: 'continue', title: `Continue watching for ${me.display_name}`, kind: 'continue', items: continueRows });
   rows.push({ id: 'picks', title: `Top picks for ${me.display_name}`, kind: 'picks', items: picks.slice(0, 20) });
-  rows.push({ id: 'trending', title: trend.thisWeek ? 'Top 10 on Moviq this week' : 'Top 10 on Moviq', kind: 'top10', items: await cardsByIds(trend.ids) });
+  rows.push({ id: 'trending', title: trend.thisWeek ? 'Top 10 on Moviq this week' : 'Top 10 on Moviq', kind: 'top10', items: trendCards });
   rows.push({ id: 'free', title: 'Free to watch on Moviq', kind: 'free', items: freeRows });
-
-  // "Because you liked X" from the user's most recent high rating
-  const anchor = await one(`SELECT m.id, m.title FROM reviews r JOIN movies m ON m.id = r.movie_id
-                            WHERE r.user_id=$1 AND (r.rating >= 4 OR r.liked) ORDER BY r.created_at DESC LIMIT 1`, [uid]);
-  if (anchor) {
-    const sim = await ml(`/similar/${anchor.id}?limit=16`, undefined, { fallback: [] });
-    if (sim.length) rows.push({ id: 'because', title: `Because you liked ${anchor.title}`, kind: 'standard', items: await cardsByIds(sim) });
-  }
+  if (anchor && similarCards.length) rows.push({ id: 'because', title: `Because you liked ${anchor.title}`, kind: 'standard', items: similarCards });
   rows.push({ id: 'toprated', title: 'Highest rated by the Moviq community', kind: 'standard', items: topRated });
   if (friends.length) rows.push({ id: 'friends', title: 'Loved by people you follow', kind: 'standard', items: friends });
   if (listRows.length) rows.push({ id: 'list', title: 'My List', kind: 'standard', items: listRows });
+  GENRE_ROWS.forEach(([g, title], i) => rows.push({ id: `genre-${g}`, title, kind: 'standard', items: genreRows[i] }));
 
-  for (const [g, title] of [['Sci-Fi', 'Sci-fi & mind-benders'], ['Comedy', 'Comedies'], ['Horror', 'Horror'], ['Romance', 'Romance'], ['Crime', 'Crime & thrillers'], ['Animation', 'Animation for everyone']]) {
-    const items = await many(`SELECT ${CARD} FROM ${CARD_FROM} WHERE $1 = ANY(m.genres) ORDER BY m.popularity DESC LIMIT 20`, [g]);
-    rows.push({ id: `genre-${g}`, title, kind: 'standard', items });
-  }
-
+  // Match % for every card, from the /recommend call (ML down: no labels)
+  const match = recs?.match ?? {};
+  const scored = rows.map((row) => ({ ...row, items: row.items.map((c) => ({ ...c, match: match[c.id] ?? null })) }));
   // Hero: the best-matching pick that has artwork, else the top pick
   const hero = picks.find((p) => p.backdrop_url) || picks[0];
-  const scored = await withMatchRows(uid, rows);
-  res.json({ hero: hero ? (await withMatch(uid, [hero]))[0] : null, heroReason: hero?.reason ?? null, rows: scored });
+  res.json({ hero: hero ? { ...hero, match: match[hero.id] ?? null } : null, heroReason: hero?.reason ?? null, rows: scored });
 });
 
 r.get('/search', async (req, res) => {
@@ -132,7 +135,8 @@ r.get('/:id', async (req, res) => {
     fetchReviews('r.movie_id = $2', [id], uid, { order: 'r.created_at DESC', limit: 8 }),
     filmInsights(id),
   ]);
-  const [scored] = await withMatch(uid, [{ id }]);
+  // One /match call labels both this film and the similar ones (each call is slow on a free ML host)
+  const [scored, ...similarScored] = await withMatch(uid, [{ id }, ...(await cardsByIds(similarIds))]);
   const { stream_url, ...rest } = movie;
 
   res.json({
@@ -142,7 +146,7 @@ r.get('/:id', async (req, res) => {
     friends,
     insights,
     reviews: { popular, recent },
-    similar: await withMatch(uid, await cardsByIds(similarIds)),
+    similar: similarScored,
   });
 });
 
