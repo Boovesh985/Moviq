@@ -38,15 +38,21 @@ function Pending({ have, need, what }) {
   );
 }
 
-function ModelCard({ name, live, pending, threshold, isAdmin, onRetrain, busy, children }) {
+function ModelCard({ name, live, pending, threshold, trainable, auto, isAdmin, onRetrain, busy, children }) {
   return (
     <section className="model-card">
       <header>
         <h2>{NAMES[name]} <span className="model-version">v{live.version || '–'}</span></h2>
-        {isAdmin && <button className="btn btn-sm btn-line" disabled={busy} onClick={() => onRetrain(name)}>{busy === name ? 'Training…' : 'Retrain now'}</button>}
+        {isAdmin && trainable && <button className="btn btn-sm btn-line" disabled={busy} onClick={() => onRetrain(name)}>{busy === name ? 'Training…' : 'Retrain now'}</button>}
       </header>
       {children}
-      <Pending have={pending} need={threshold} what={name === 'spoiler' ? 'new sentence labels' : name === 'sentiment' ? 'new rated reviews' : 'new ratings'} />
+      {trainable && !auto ? (
+        <p className="muted">{pending} new {name === 'recommender' ? 'ratings' : 'examples'} since the last training. Automatic retraining is off on this small demo server{isAdmin ? '; use Retrain now' : ''}.</p>
+      ) : trainable ? (
+        <Pending have={pending} need={threshold} what={name === 'spoiler' ? 'new sentence labels' : name === 'sentiment' ? 'new rated reviews' : 'new ratings'} />
+      ) : (
+        <p className="muted">Retraining is off on this demo server, which ships the trained model without its training dataset. Labels and reviews are still stored and used for scoring.</p>
+      )}
     </section>
   );
 }
@@ -103,7 +109,7 @@ export default function Models() {
       {notice && <p className="saved-note" role="status">{notice}</p>}
 
       <div className="model-grid">
-        <ModelCard name="spoiler" live={live.spoiler} pending={learner.pending.spoiler} threshold={learner.thresholds.spoiler} isAdmin={user.is_admin} onRetrain={retrain} busy={busy}>
+        <ModelCard name="spoiler" live={live.spoiler} pending={learner.pending.spoiler} threshold={learner.thresholds.spoiler} trainable={learner.trainable?.spoiler ?? true} auto={learner.auto_retrain ?? true} isAdmin={user.is_admin} onRetrain={retrain} busy={busy}>
           <div className="metrics">
             <Metric label="F1 (realistic)" value={pct(sp.f1_realistic ?? sp.f1)} hint="F1 if one sentence in ten were a spoiler, as in real reviews" />
             <Metric label="Precision" value={pct(sp.precision_realistic ?? sp.precision)} hint="Of the sentences it blurs, how many really are spoilers (at a realistic spoiler rate)" />
@@ -120,7 +126,7 @@ export default function Models() {
           </p>
         </ModelCard>
 
-        <ModelCard name="sentiment" live={live.sentiment} pending={learner.pending.sentiment} threshold={learner.thresholds.sentiment} isAdmin={user.is_admin} onRetrain={retrain} busy={busy}>
+        <ModelCard name="sentiment" live={live.sentiment} pending={learner.pending.sentiment} threshold={learner.thresholds.sentiment} trainable={learner.trainable?.sentiment ?? true} auto={learner.auto_retrain ?? true} isAdmin={user.is_admin} onRetrain={retrain} busy={busy}>
           <div className="metrics">
             <Metric label="Accuracy" value={pct(se.accuracy)} hint="Positive/negative calls that were right (IMDb + film reviews held out)" />
             <Metric label="AUC" value={se.auc?.toFixed(3) ?? '–'} hint="How well it ranks positive above negative reviews (1.0 is perfect)" />
@@ -137,7 +143,7 @@ export default function Models() {
           </p>
         </ModelCard>
 
-        <ModelCard name="recommender" live={live.recommender} pending={learner.pending.recommender} threshold={learner.thresholds.recommender} isAdmin={user.is_admin} onRetrain={retrain} busy={busy}>
+        <ModelCard name="recommender" live={live.recommender} pending={learner.pending.recommender} threshold={learner.thresholds.recommender} trainable={learner.trainable?.recommender ?? true} auto={learner.auto_retrain ?? true} isAdmin={user.is_admin} onRetrain={retrain} busy={busy}>
           <div className="metrics">
             <Metric label="Recall@10" value={pct(rm['recall@10'])} hint="Share of films people went on to love that appeared in their top 10" />
             <Metric label="nDCG@10" value={rm['ndcg@10']?.toFixed(3) ?? '–'} hint="Like recall, but rewards putting them near the top" />

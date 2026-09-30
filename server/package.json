@@ -13,6 +13,7 @@
     "sync:tmdb": "node --env-file=.env src/db/tmdb-sync.js"
   },
   "dependencies": {
+    "@vercel/functions": "^3.9.9",
     "bcryptjs": "^3.0.2",
     "cookie-parser": "^1.4.7",
     "express": "^5.1.0",

@@ -1,0 +1,23 @@
+# Render Blueprint: the ML service (the website and API run on Vercel, the database on Neon).
+# In Render: New → Blueprint → pick this repo. It asks for the two values marked sync: false.
+services:
+  - type: web
+    name: moviq-ml
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: ml
+    buildCommand: pip install -r requirements.txt && python download_models.py
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.3
+      - key: DATABASE_URL        # Neon connection string
+        sync: false
+      - key: ML_TOKEN            # the same random value as ML_TOKEN on Vercel
+        sync: false
+      - key: AUTO_RETRAIN        # a free instance has a tenth of a CPU: retrain only on request
+        value: "0"
+      - key: MALLOC_ARENA_MAX    # stops glibc reserving memory per thread (free instances have 512 MB)
+        value: "2"

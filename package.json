@@ -1,0 +1,9 @@
+{
+  "name": "moviq",
+  "private": true,
+  "type": "module",
+  "description": "Workspace root. The app lives in client/, server/ and ml/; this file lets Vercel run api/index.js as an ES module.",
+  "engines": {
+    "node": ">=20"
+  }
+}
