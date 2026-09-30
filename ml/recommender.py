@@ -474,7 +474,9 @@ class Recommender:
 
     # ── public API ────────────────────────────────────────────────────────
     @serving
-    def recommend(self, user_id: int, limit=20, exclude_ids=()):
+    def recommend(self, user_id: int, limit=20, exclude_ids=(), with_match=False):
+        """Top picks. with_match also returns this person's match % for every film (the blend is computed
+        for the whole catalogue anyway), so a page can label all its rows without a second call."""
         p = self.profile(user_id)
         final, parts = self.blend(p)
         blocked = p.seen.copy()
@@ -483,8 +485,12 @@ class Recommender:
                 blocked[self.index[mid]] = True
         order = [j for j in np.argsort(-final) if not blocked[j]][:limit]
         pct = self.match_pct(final)
-        return [dict(movie_id=int(self.ids[j]), score=round(float(final[j]), 3), match=int(pct[j]), reasons=self.reasons(j, p, parts))
-                for j in order]
+        picks = [dict(movie_id=int(self.ids[j]), score=round(float(final[j]), 3), match=int(pct[j]), reasons=self.reasons(j, p, parts))
+                 for j in order]
+        if not with_match:
+            return picks
+        match = {str(int(mid)): int(v) for mid, v in zip(self.ids, pct)} if p.weights.any() else {}
+        return {"picks": picks, "match": match}
 
     @serving
     def match(self, user_id: int, movie_ids: list[int]):
