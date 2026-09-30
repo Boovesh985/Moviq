@@ -19,6 +19,8 @@ export function AuthProvider({ children }) {
         timer = setTimeout(check, 3000);
       });
     check();
+    // On free hosting the ML service sleeps when idle; start waking it now, not when someone needs a pick.
+    api.get('/wake').catch(() => {});
     return () => clearTimeout(timer);
   }, []);
 
@@ -28,6 +30,7 @@ export function AuthProvider({ children }) {
     setUser,
     login: async (login, password) => setUser((await api.post('/auth/login', { login, password })).user),
     register: async (form) => setUser((await api.post('/auth/register', form)).user),
+    guest: async () => setUser((await api.post('/auth/guest')).user),
     logout: async () => {
       await api.post('/auth/logout');
       setUser(null);

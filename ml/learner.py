@@ -21,10 +21,13 @@ from datetime import datetime, timezone
 
 from learning import Registry, db
 from recommender import DEFAULT_WEIGHTS, Recommender
-from sentiment import NEGATIVE_MAX, POSITIVE_MIN, SentimentModel
-from spoiler import THRESHOLD, SpoilerModel
+from sentiment import IMDB, NEGATIVE_MAX, POSITIVE_MIN, SentimentModel
+from spoiler import GOODREADS, THRESHOLD, SpoilerModel
 
 INTERVAL = int(os.environ.get("LEARN_INTERVAL", 120))
+# 0 on small hosts (a free instance has a tenth of a CPU): reviews are still scored, but models only
+# retrain when an admin asks for it on the "How Moviq learns" page.
+AUTO_RETRAIN = os.environ.get("AUTO_RETRAIN", "1") != "0"
 SPOILER_MIN_NEW = int(os.environ.get("SPOILER_MIN_NEW", 5))
 SENTIMENT_MIN_NEW = int(os.environ.get("SENTIMENT_MIN_NEW", 20))
 RECOMMENDER_MIN_NEW = int(os.environ.get("RECOMMENDER_MIN_NEW", 25))
@@ -173,6 +176,13 @@ class Learner:
         if row:
             self.rec.weights_version, self.rec.weights = row[0], {**DEFAULT_WEIGHTS, **row[1]}
 
+    @staticmethod
+    def trainable(model: str) -> bool:
+        """The text models retrain on their base dataset plus live data. A deployment that ships only the
+        trained models (the public demo doesn't redistribute IMDb or Goodreads) keeps them as they are."""
+        return {"spoiler": GOODREADS, "sentiment": IMDB}.get(model, None) is None or \
+            {"spoiler": GOODREADS, "sentiment": IMDB}[model].exists()
+
     def run(self, model: str, reason: str) -> dict:
         with self.busy:
             self.activity = f"training {model}"
@@ -189,12 +199,19 @@ class Learner:
                 self.activity = "idle"
 
     def step(self):
+        if not AUTO_RETRAIN:
+            with self.busy:
+                self.activity = "scoring reviews"
+                self.score_stale_reviews()
+                self.activity = "idle"
+            self.last_step = datetime.now(timezone.utc)
+            return
         pending = self.pending()
-        if not self.sentiment.ready:
+        if not self.sentiment.ready and self.trainable("sentiment"):
             self.run("sentiment", "initial training")
-        if pending["spoiler"] >= SPOILER_MIN_NEW:
+        if pending["spoiler"] >= SPOILER_MIN_NEW and self.trainable("spoiler"):
             self.run("spoiler", f"{pending['spoiler']} new spoiler labels")
-        if pending["sentiment"] >= SENTIMENT_MIN_NEW:
+        if pending["sentiment"] >= SENTIMENT_MIN_NEW and self.trainable("sentiment"):
             self.run("sentiment", f"{pending['sentiment']} new rated reviews")
         last = Registry.last_run("recommender")
         stale = last is None or (datetime.now(timezone.utc) - last).total_seconds() > RECOMMENDER_MAX_AGE_H * 3600
@@ -227,4 +244,6 @@ class Learner:
             "activity": self.activity, "interval_seconds": INTERVAL, "last_step": self.last_step, "last_error": self.last_error,
             "pending": self.pending(),
             "thresholds": {"spoiler": SPOILER_MIN_NEW, "sentiment": SENTIMENT_MIN_NEW, "recommender": RECOMMENDER_MIN_NEW},
+            "trainable": {m: self.trainable(m) for m in ("spoiler", "sentiment", "recommender")},
+            "auto_retrain": AUTO_RETRAIN,
         }

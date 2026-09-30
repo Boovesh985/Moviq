@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { one } from '../db/pool.js';
 import { setAuthCookie, COOKIE, requireAuth, HttpError } from '../middleware/auth.js';
@@ -36,6 +37,25 @@ r.post('/login', async (req, res) => {
   delete row.password_hash;
   setAuthCookie(res, row);
   res.json({ user: row });
+});
+
+// One-click guest account for demos: no email or password. Capped per IP so the button can't be used to flood the database.
+const guestsByIp = new Map();
+r.post('/guest', async (req, res) => {
+  const hour = Math.floor(Date.now() / 3_600_000);
+  const key = `${req.ip}|${hour}`;
+  if ((guestsByIp.get(key) ?? 0) >= 20) throw new HttpError(429, 'Too many guest accounts from here. Try again in an hour.');
+  guestsByIp.set(key, (guestsByIp.get(key) ?? 0) + 1);
+  for (const k of guestsByIp.keys()) if (!k.endsWith(`|${hour}`)) guestsByIp.delete(k);
+
+  const tag = crypto.randomBytes(3).toString('hex');
+  const user = await one(
+    `INSERT INTO users (username, email, password_hash, display_name, avatar_hue)
+     VALUES ($1,$2,$3,$4,$5) RETURNING ${PUBLIC}`,
+    [`guest_${tag}`, `guest_${tag}@guest.moviq`, await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10), `Guest ${tag.toUpperCase()}`, Math.floor(Math.random() * 360)],
+  );
+  setAuthCookie(res, user);
+  res.status(201).json({ user });
 });
 
 r.post('/logout', (_req, res) => {

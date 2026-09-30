@@ -6,7 +6,12 @@ pg.types.setTypeParser(pg.types.builtins.INT8, (v) => parseInt(v, 10));
 // Keep DATE columns as 'YYYY-MM-DD' strings instead of timezone-shifted JS Dates.
 pg.types.setTypeParser(pg.types.builtins.DATE, (v) => v);
 
-export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+// On serverless hosts every warm function instance keeps its own pool, so PG_POOL_MAX keeps it small there.
+export const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: Number(process.env.PG_POOL_MAX || 10),
+  idleTimeoutMillis: 10_000,
+});
 
 export const query = (text, params) => pool.query(text, params);
 export const one = async (text, params) => (await pool.query(text, params)).rows[0] ?? null;

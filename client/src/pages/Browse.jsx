@@ -76,7 +76,9 @@ export default function Browse() {
         {data.rows.map((row) => <Row key={row.id} row={row} watchlist={watchlist} onToggleList={toggleList} />)}
       </div>
       <footer className="site-foot">
-        Moviq. Free films stream from the Internet Archive’s public-domain collection.
+        Moviq is a portfolio demo. Free films stream from the Internet Archive’s public-domain collection.
+        Film data, artwork and reviews come from <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer">TMDB</a>; this product uses
+        the TMDB API but is not endorsed or certified by TMDB. Ratings from the MovieLens dataset (GroupLens, University of Minnesota).
       </footer>
     </main>
   );

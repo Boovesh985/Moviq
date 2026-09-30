@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+import os
+import secrets
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from learner import Learner
@@ -33,6 +37,16 @@ async def lifespan(_app):
 
 
 app = FastAPI(title="Moviq ML", lifespan=lifespan)
+ML_TOKEN = os.environ.get("ML_TOKEN")
+
+
+@app.middleware("http")
+async def require_token(request: Request, call_next):
+    """When ML_TOKEN is set (a publicly reachable deployment), every call but /health must carry it."""
+    if ML_TOKEN and request.url.path != "/health" and \
+            not secrets.compare_digest(request.headers.get("x-moviq-token", ""), ML_TOKEN):
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    return await call_next(request)
 
 
 class TextIn(BaseModel):
@@ -164,6 +178,8 @@ def models():
 def learn(model: str):
     if model not in ("spoiler", "sentiment", "recommender"):
         raise HTTPException(404, "Unknown model")
+    if not learner.trainable(model):
+        raise HTTPException(409, "Retraining is off on this server: it ships the trained model without the dataset it was trained on.")
     if learner.busy.locked():
         raise HTTPException(409, f"The learner is busy ({learner.activity}). Try again shortly.")
     result = learner.run(model, "manual retrain")

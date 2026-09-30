@@ -1,7 +1,9 @@
-fastapi>=0.115
-uvicorn>=0.32
-numpy>=2.1
-scipy>=1.14
-scikit-learn>=1.6
-joblib>=1.4
-psycopg[binary]>=3.2
+# Pinned to the versions the saved models (models/*.joblib) were trained with: a different
+# scikit-learn or NumPy may fail to load them, or load them with subtly different behaviour.
+fastapi==0.141.1
+uvicorn==0.54.0
+numpy==2.5.3
+scipy==1.18.1
+scikit-learn==1.9.1
+joblib==1.6.0
+psycopg[binary]==3.3.6

@@ -6,7 +6,7 @@ import Poster from '../components/Poster.jsx';
 import { Logo } from '../components/Icons.jsx';
 
 export default function Auth({ mode }) {
-  const { user, login, register } = useAuth();
+  const { user, login, register, guest } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
   const [form, setForm] = useState({ login: '', password: '', username: '', email: '', displayName: '' });
@@ -33,6 +33,19 @@ export default function Auth({ mode }) {
         await register({ username: form.username, email: form.email, password: form.password, displayName: form.displayName });
         nav('/welcome');
       }
+    } catch (err) {
+      setError(err.message);
+      setBusy(false);
+    }
+  };
+
+  // A fresh throwaway account: starts at onboarding, so the recommender has something to go on.
+  const tryAsGuest = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await guest();
+      nav('/welcome');
     } catch (err) {
       setError(err.message);
       setBusy(false);
@@ -67,11 +80,10 @@ export default function Auth({ mode }) {
         <p className="auth-alt">
           {mode === 'login' ? <>New to Moviq? <Link to="/register">Create an account</Link></> : <>Already a member? <Link to="/login">Sign in</Link></>}
         </p>
-        {mode === 'login' && (
-          <p className="demo-hint">
-            Exploring locally? <button type="button" onClick={() => submit(null, { login: 'demo', password: 'moviq123' })}>Sign in with the demo account</button>
-          </p>
-        )}
+        <p className="demo-hint">
+          Just looking? <button type="button" disabled={busy} onClick={tryAsGuest}>Try it as a guest</button>, no sign-up needed
+          {mode === 'login' && <>, or <button type="button" disabled={busy} onClick={() => submit(null, { login: 'demo', password: 'moviq123' })}>use the demo account</button></>}.
+        </p>
       </form>
     </main>
   );
