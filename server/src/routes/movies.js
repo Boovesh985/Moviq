@@ -54,7 +54,10 @@ r.get('/home', requireAuth, async (req, res) => {
     Promise.all(GENRE_ROWS.map(([g]) => many(`SELECT ${CARD} FROM ${CARD_FROM} WHERE $1 = ANY(m.genres) ORDER BY m.popularity DESC LIMIT 20`, [g]))),
   ]);
 
-  const picked = recs?.picks ?? [];
+  // An ML service one deploy behind returns a plain list without match scores (Vercel redeploys in a
+  // minute, Render in several): use its picks and fetch the scores separately.
+  const legacy = Array.isArray(recs);
+  const picked = legacy ? recs : recs?.picks ?? [];
   const [pickCards, trendCards, similarCards] = await Promise.all([
     cardsByIds(picked.length ? picked.map((x) => x.movie_id) : await trendingIds(20)),
     cardsByIds(trend.ids),
@@ -75,7 +78,9 @@ r.get('/home', requireAuth, async (req, res) => {
   GENRE_ROWS.forEach(([g, title], i) => rows.push({ id: `genre-${g}`, title, kind: 'standard', items: genreRows[i] }));
 
   // Match % for every card, from the /recommend call (ML down: no labels)
-  const match = recs?.match ?? {};
+  const match = legacy
+    ? await ml('/match', { user_id: uid, movie_ids: [...new Set(rows.flatMap((row) => row.items.map((c) => c.id)))] }, { fallback: {} })
+    : recs?.match ?? {};
   const scored = rows.map((row) => ({ ...row, items: row.items.map((c) => ({ ...c, match: match[c.id] ?? null })) }));
   // Hero: the best-matching pick that has artwork, else the top pick
   const hero = picks.find((p) => p.backdrop_url) || picks[0];
