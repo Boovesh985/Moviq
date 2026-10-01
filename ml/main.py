@@ -2,10 +2,12 @@
 and the learner that keeps all of them training on live data."""
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
-
 import os
 import secrets
+import threading
+import time
+import traceback
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -23,16 +25,44 @@ sentiment = SentimentModel()
 learner = Learner(rec, spoiler, sentiment)
 
 
+# Loading the models and building the recommender takes seconds on a laptop but minutes on a small
+# free instance. The port opens at once and the work happens in the background: until it's done,
+# calls get a quick 503 (the API falls back to simpler rankings) instead of hanging.
+WARMUP = {"ready": False, "stage": "starting", "error": None}
+
+
+def warm_up():
+    """Loads everything; a failed step (say, the database still waking) is retried with backoff."""
+    delay = 5
+    while True:
+        try:
+            if not spoiler.ready:
+                WARMUP["stage"] = "loading the Spoiler Shield"
+                metrics = spoiler.load_or_train()
+                print(f"[spoiler] v{spoiler.version} ready {metrics}")
+            if not sentiment.ready:
+                WARMUP["stage"] = "loading the sentiment model"
+                if sentiment.load():
+                    print(f"[sentiment] v{sentiment.version} ready {sentiment.metrics}")
+                else:
+                    print("[sentiment] no saved model yet; the learner will train it in the background")
+            WARMUP["stage"] = "building the recommender"
+            rec.fit()
+            print(f"[recommender] fitted on {len(rec.ids)} films, {len(rec.user_index)} people")
+            learner.start()
+            WARMUP.update(ready=True, stage="ready", error=None)
+            return
+        except Exception as e:
+            WARMUP["error"] = f"{type(e).__name__}: {e}"
+            print(f"[warm-up] {WARMUP['stage']} failed ({WARMUP['error']}); retrying in {delay}s")
+            traceback.print_exc()
+            time.sleep(delay)
+            delay = min(delay * 2, 60)
+
+
 @asynccontextmanager
 async def lifespan(_app):
-    print(f"[spoiler] v{spoiler.version} ready {spoiler.load_or_train()}")
-    if sentiment.load():
-        print(f"[sentiment] v{sentiment.version} ready {sentiment.metrics}")
-    else:
-        print("[sentiment] no saved model yet; the learner will train it in the background")
-    rec.fit()
-    print(f"[recommender] fitted on {len(rec.ids)} films, {len(rec.user_index)} people")
-    learner.start()
+    threading.Thread(target=warm_up, daemon=True, name="warm-up").start()
     yield
 
 
@@ -46,6 +76,8 @@ async def require_token(request: Request, call_next):
     if ML_TOKEN and request.url.path != "/health" and \
             not secrets.compare_digest(request.headers.get("x-moviq-token", ""), ML_TOKEN):
         return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    if not WARMUP["ready"] and request.url.path != "/health":
+        return JSONResponse({"detail": f"Warming up: {WARMUP['stage']}"}, status_code=503, headers={"Retry-After": "30"})
     return await call_next(request)
 
 
@@ -90,7 +122,9 @@ class GroupIn(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"ok": True, "spoiler": spoiler.version, "sentiment": sentiment.version, "recommender": rec.weights_version,
+    """Always 200 while the process is up (hosts use it as a liveness check); "ready" says whether it can serve."""
+    return {"ok": True, "ready": WARMUP["ready"], "stage": WARMUP["stage"], "error": WARMUP["error"],
+            "spoiler": spoiler.version, "sentiment": sentiment.version, "recommender": rec.weights_version,
             "movies": len(getattr(rec, "ids", []))}
 
 

@@ -114,7 +114,7 @@ class Recommender:
 
     @staticmethod
     def load_raw():
-        with psycopg.connect(DB_URL, prepare_threshold=None) as conn, conn.cursor() as cur:
+        with psycopg.connect(DB_URL, prepare_threshold=None, connect_timeout=10) as conn, conn.cursor() as cur:
             cur.execute("""SELECT id, title, year, runtime, genres, moods, director, cast_names, certification,
                                   overview, stream_url IS NOT NULL, providers, popularity FROM movies ORDER BY id""")
             movies = cur.fetchall()
@@ -239,7 +239,7 @@ class Recommender:
     # ── scoring ───────────────────────────────────────────────────────────
     def live_rows(self, user_id: int):
         """This person's ratings, likes, watches and watchlist straight from the database (a few ms)."""
-        with psycopg.connect(DB_URL, prepare_threshold=None) as conn, conn.cursor() as cur:
+        with psycopg.connect(DB_URL, prepare_threshold=None, connect_timeout=10) as conn, conn.cursor() as cur:
             cur.execute("SELECT movie_id, rating::float, liked, sentiment FROM reviews WHERE user_id = %s", (user_id,))
             reviews = cur.fetchall()
             cur.execute("SELECT movie_id FROM watch_history WHERE user_id = %s", (user_id,))
@@ -459,7 +459,7 @@ class Recommender:
         report["current"] = sim.ranking_metrics(test_users, self.weights, cache=cache)
         report["tuned"] = sim.ranking_metrics(test_users, best, cache=cache)
         # The same test, split by where people came from: MovieLens raters vs Moviq's own members.
-        with psycopg.connect(DB_URL, prepare_threshold=None) as conn, conn.cursor() as cur:
+        with psycopg.connect(DB_URL, prepare_threshold=None, connect_timeout=10) as conn, conn.cursor() as cur:
             cur.execute("SELECT id, source FROM users WHERE id = ANY(%s)", (list(test_users),))
             source = dict(cur.fetchall())
         report["by_source"] = {}

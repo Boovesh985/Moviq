@@ -19,7 +19,7 @@ r.get('/', async (_req, res) => {
            (SELECT COUNT(*)::int FROM users WHERE source = 'moviq') AS moviq_members,
            (SELECT COUNT(*)::int FROM users WHERE source = 'movielens') AS movielens_members`),
   ]);
-  if (!models) throw new HttpError(503, 'The ML service isn’t responding. Start it and refresh.');
+  if (!models) throw new HttpError(503, 'The ML service is waking up (free hosting puts it to sleep when nobody’s around). This page refreshes by itself in a moment.');
   res.json({ ...models, data });
 });
 

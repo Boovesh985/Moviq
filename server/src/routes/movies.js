@@ -33,7 +33,7 @@ r.get('/home', requireAuth, async (req, res) => {
   // "Because you liked X": the user's most recent high rating, looked up first so /similar can run alongside /recommend
   const anchorQuery = one(`SELECT m.id, m.title FROM reviews r JOIN movies m ON m.id = r.movie_id
                            WHERE r.user_id=$1 AND (r.rating >= 4 OR r.liked) ORDER BY r.created_at DESC LIMIT 1`, [uid]);
-  const similarQuery = anchorQuery.then((a) => (a ? ml(`/similar/${a.id}?limit=16`, undefined, { fallback: [] }) : []));
+  const similarQuery = anchorQuery.then((a) => (a ? ml(`/similar/${a.id}?limit=16`, undefined, { fallback: null }).then((ids) => ids ?? sameGenre(a.id)) : []));
 
   const [me, recs, trend, continueRows, freeRows, topRated, listRows, friends, anchor, similar, genreRows] = await Promise.all([
     one('SELECT display_name FROM users WHERE id=$1', [uid]),
@@ -118,6 +118,14 @@ r.get('/genre/:genre', async (req, res) => {
   res.json({ items: await withMatch(req.user?.id, items) });
 });
 
+// "More like this" when the ML service is asleep: well-rated films sharing the most genres.
+const sameGenre = async (id) => (await many(
+  `SELECT m.id FROM ${CARD_FROM}, (SELECT genres FROM movies WHERE id = $1) f
+   WHERE m.id <> $1 AND m.genres && f.genres
+   ORDER BY cardinality(ARRAY(SELECT unnest(m.genres) INTERSECT SELECT unnest(f.genres))) DESC,
+            (COALESCE(s.n_ratings, 0) * COALESCE(s.avg_rating, 0) + 10 * 3.6) / (COALESCE(s.n_ratings, 0) + 10) DESC
+   LIMIT 12`, [id])).map((r) => r.id);
+
 // Film page (Letterboxd-style)
 r.get('/:id', async (req, res) => {
   const id = Number(req.params.id);
@@ -132,7 +140,7 @@ r.get('/:id', async (req, res) => {
     uid ? one(`SELECT id, rating, liked, body, watched_on, rewatch, author_spoiler FROM reviews WHERE user_id=$1 AND movie_id=$2`, [uid, id]) : null,
     uid ? one(`SELECT 1 FROM watchlist WHERE user_id=$1 AND movie_id=$2`, [uid, id]) : null,
     uid ? one(`SELECT position_seconds, duration_seconds, completed FROM watch_history WHERE user_id=$1 AND movie_id=$2`, [uid, id]) : null,
-    ml(`/similar/${id}?limit=12`, undefined, { fallback: [] }),
+    ml(`/similar/${id}?limit=12`, undefined, { fallback: null }).then((ids) => ids ?? sameGenre(id)),
     uid ? many(`SELECT u.username, u.display_name, u.avatar_hue, r.rating, r.liked FROM follows f
                 JOIN reviews r ON r.user_id = f.followee_id AND r.movie_id=$2 JOIN users u ON u.id = r.user_id
                 WHERE f.follower_id=$1 ORDER BY r.created_at DESC LIMIT 12`, [uid, id]) : [],

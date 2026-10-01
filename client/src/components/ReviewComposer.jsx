@@ -91,10 +91,11 @@ export default function ReviewComposer({ movie, existing, onClose, onSaved }) {
           <label className="sr-only" htmlFor="review-body">Review</label>
           <textarea id="review-body" value={body} onChange={(e) => setBody(e.target.value)} placeholder="Add a review…" rows={7} maxLength={5000} />
 
-          <div className={`shield-live ${blurredCount ? 'warn' : check ? 'ok' : ''}`} aria-live="polite">
+          <div className={`shield-live ${blurredCount ? 'warn' : check && !check.unavailable ? 'ok' : ''}`} aria-live="polite">
             <Shield width={16} />
             {!check && <span>Spoiler Shield checks your review as you write.</span>}
-            {check && !flagged.length && <span>No spoilers detected. Readers will see your whole review.</span>}
+            {check?.unavailable && <span>The Spoiler Shield is waking up, so it can’t check this yet. Readers will get a spoiler warning until it has.</span>}
+            {check && !check.unavailable && !flagged.length && <span>No spoilers detected. Readers will see your whole review.</span>}
             {flagged.length > 0 && (
               <span>
                 {flagged.length === 1 ? 'One sentence looks' : `${flagged.length} sentences look`} like a spoiler. Readers will see {blurredCount === 1 ? 'it' : 'them'} blurred unless you say otherwise:

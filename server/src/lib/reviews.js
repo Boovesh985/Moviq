@@ -3,7 +3,7 @@ import { many } from '../db/pool.js';
 // $1 is always the viewer's user id (or null).
 export const REVIEW_SELECT = `
   SELECT r.id, r.movie_id, r.rating, r.liked, r.body, r.watched_on, r.rewatch, r.created_at,
-         r.author_spoiler, r.spoiler_score, r.spoiler_sentences, r.sentiment, r.source_url,
+         r.author_spoiler, r.spoiler_score, r.spoiler_sentences, r.sentiment, r.source_url, (r.scored_by IS NULL) AS unchecked,
          (SELECT json_object_agg(sl.sentence, sl.label) FROM spoiler_labels sl WHERE sl.review_id = r.id AND sl.user_id = $1) AS my_labels,
          json_build_object('id', u.id, 'username', u.username, 'display_name', u.display_name, 'avatar_hue', u.avatar_hue) AS author,
          (SELECT COUNT(*)::int FROM review_likes l WHERE l.review_id = r.id) AS likes,
@@ -17,7 +17,7 @@ export const REVIEW_SELECT = `
 
 /** Shapes the spoiler information the client needs to render the Spoiler Shield. */
 export function shapeReview(row, viewerId) {
-  const { author_spoiler, spoiler_score, spoiler_sentences, reports, my_labels, ...rest } = row;
+  const { author_spoiler, spoiler_score, spoiler_sentences, reports, my_labels, unchecked, ...rest } = row;
   const mine = viewerId && row.author.id === viewerId;
   return {
     ...rest,
@@ -25,6 +25,8 @@ export function shapeReview(row, viewerId) {
     spoiler: {
       // whole review hidden: author tagged it, or 2+ people reported it
       hidden: !mine && (author_spoiler || reports >= 2),
+      // written while the ML service was asleep: not checked for spoilers yet, so readers get a warning first
+      unchecked: !mine && !!unchecked,
       author_tagged: author_spoiler,
       community_reports: reports,
       score: spoiler_score,

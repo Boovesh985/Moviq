@@ -64,7 +64,8 @@ export default function Models() {
   const [busy, setBusy] = useState(null);
   const [notice, setNotice] = useState('');
 
-  const load = () => api.get('/models').then(setD).catch((e) => setError(e.message));
+  // Re-checked every 15 s, so the page recovers by itself once a sleeping ML service is back.
+  const load = () => api.get('/models').then((x) => { setD(x); setError(''); }).catch((e) => setError(e.message));
   useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, []);
 
   const retrain = async (name) => {
@@ -77,7 +78,7 @@ export default function Models() {
     } catch (e) { setNotice(e.message); } finally { setBusy(null); }
   };
 
-  if (error) return <main className="journal page-pad"><p className="empty">{error}</p></main>;
+  if (error && !d) return <main className="journal page-pad"><p className="empty">{error}</p></main>;
   if (!d) return <main className="journal" />;
   const { live, learner, history, data } = d;
   const sp = live.spoiler.metrics || {};
