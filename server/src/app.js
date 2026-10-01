@@ -44,7 +44,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 // starts waking it, so recommendations are ready by the time someone reaches them.
 app.get('/api/wake', async (_req, res) => {
   const health = await ml('/health', undefined, { timeout: 2500, probe: true });
-  res.json({ ml: !!health && health.ready !== false, stage: health?.stage ?? 'asleep' });
+  res.json({ ml: !!health && health.ready !== false, stage: health ? health.stage ?? 'ready' : 'asleep' });
 });
 app.use('/api', (_req, res) => res.status(404).json({ error: 'There’s no such API endpoint.' }));
 

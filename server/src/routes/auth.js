@@ -2,7 +2,7 @@ import { Router } from 'express';
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { one } from '../db/pool.js';
-import { setAuthCookie, COOKIE, requireAuth, HttpError } from '../middleware/auth.js';
+import { setAuthCookie, COOKIE, HttpError } from '../middleware/auth.js';
 
 const r = Router();
 const PUBLIC = 'id, username, email, display_name, bio, avatar_hue, services, favorite_ids, is_admin';
@@ -63,9 +63,11 @@ r.post('/logout', (_req, res) => {
   res.json({ ok: true });
 });
 
-r.get('/me', requireAuth, async (req, res) => {
-  const user = await one(`SELECT ${PUBLIC} FROM users WHERE id=$1`, [req.user.id]);
-  if (!user) throw new HttpError(401, 'Sign in to continue.');
+// "Who am I?" Signed out is a normal answer here (user: null), not an error, so the browser console
+// stays clean on the sign-in page.
+r.get('/me', async (req, res) => {
+  const user = req.user ? await one(`SELECT ${PUBLIC} FROM users WHERE id=$1`, [req.user.id]) : null;
+  if (req.user && !user) res.clearCookie(COOKIE);   // account deleted (e.g. a demo guest cleaned up)
   res.json({ user });
 });
 
