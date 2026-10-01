@@ -41,7 +41,7 @@
 .decide-sub { color: var(--fog); margin: 0; font-size: 16px; text-transform: none; }
 .decide-form fieldset { border: 0; padding: 0; margin: 0 0 30px; }
 .decide-form legend { font-size: 20px; font-weight: 700; margin-bottom: 12px; padding: 0; }
-.decide-form legend span { font-size: 13px; font-weight: 400; color: var(--fog); margin-left: 8px; }
+.decide-form legend span { font-size: 13px; font-weight: 400; color: var(--fog); margin-left: 8px; white-space: nowrap; }
 .dchip {
   height: 40px; padding: 0 16px; border-radius: 20px; border: 1px solid #ffffff30; background: #ffffff08; font-size: 14px; font-weight: 600;
   transition: all 0.15s;
