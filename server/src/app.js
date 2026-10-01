@@ -16,8 +16,14 @@ import models from './routes/models.js';
 import imports from './routes/imports.js';
 
 const app = express();
+app.disable('x-powered-by');
 // Behind a hosting proxy (Vercel, Render…), req.ip should be the visitor's address, not the proxy's.
 app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 1));
+// API answers depend on who's signed in: never let a browser or CDN reuse them.
+app.use('/api', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
 app.use('/api/import', express.json({ limit: '8mb' })); // history exports can be large
 app.use(express.json({ limit: '200kb' }));
 app.use(cookieParser());
@@ -37,8 +43,10 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 // The client calls this on load. On a free host the ML service sleeps when idle, and this request is what
 // starts waking it, so recommendations are ready by the time someone reaches them.
 app.get('/api/wake', async (_req, res) => {
-  res.json({ ml: !!(await ml('/health', undefined, { timeout: 2500, probe: true })) });
+  const health = await ml('/health', undefined, { timeout: 2500, probe: true });
+  res.json({ ml: !!health && health.ready !== false, stage: health?.stage ?? 'asleep' });
 });
+app.use('/api', (_req, res) => res.status(404).json({ error: 'There’s no such API endpoint.' }));
 
 // Postgres errors that mean the request itself was bad (a malformed id or date, a film that doesn't exist).
 const PG_CLIENT_ERRORS = {
@@ -53,6 +61,8 @@ const PG_CLIENT_ERRORS = {
 export function errorHandler(err, _req, res, _next) {
   const pg = PG_CLIENT_ERRORS[err.code];
   if (pg) return res.status(pg[0]).json({ error: pg[1] });
+  if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'That request body isn’t valid JSON.' });
+  if (err.type === 'entity.too.large') return res.status(413).json({ error: 'That upload is too large.' });
   if (!err.expose) console.error(err);   // expected 4xx answers aren't worth a stack trace
   res.status(err.status || 500).json({ error: err.expose ? err.message : 'Something went wrong on our side. Try again.' });
 }

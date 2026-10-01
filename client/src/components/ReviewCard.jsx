@@ -73,11 +73,13 @@ function SpoilerText({ seg, review, canLabel, onLabel }) {
 export function ReviewBody({ review, flagging = false, onFlag, canLabel = false, onLabel }) {
   const [reveal, setReveal] = useState(false);
   const { spoiler, body } = review;
-  if (spoiler.hidden && !reveal) {
+  if ((spoiler.hidden || spoiler.unchecked) && !reveal) {
     return (
       <div className="review-hidden">
         <p>
-          {spoiler.author_tagged ? 'The author says this review contains spoilers.' : `${spoiler.community_reports} members flagged spoilers in this review.`}
+          {spoiler.author_tagged ? 'The author says this review contains spoilers.'
+            : spoiler.hidden ? `${spoiler.community_reports} members flagged spoilers in this review.`
+            : 'This review is brand new and the Spoiler Shield hasn’t checked it yet.'}
         </p>
         <button className="link-btn" onClick={() => setReveal(true)}>Show the review anyway</button>
       </div>

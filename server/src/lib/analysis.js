@@ -3,7 +3,8 @@ import { ml, mlRefresh } from './ml.js';
 /** Live check while someone writes a review: spoiler spans + sentiment, nothing stored. */
 export async function analyzeText(text) {
   if (!text?.trim()) return { spoiler: { score: 0, sentences: [] }, sentiment: { score: null, aspects: [] } };
-  return ml('/analyze', { text }, { fallback: { spoiler: { score: 0, sentences: [] }, sentiment: { score: null, aspects: [] } } });
+  // unavailable: the ML service is asleep or busy, so nothing was checked (not "no spoilers found")
+  return ml('/analyze', { text }, { fallback: { spoiler: { score: 0, sentences: [], unavailable: true }, sentiment: { score: null, aspects: [] } } });
 }
 
 /**

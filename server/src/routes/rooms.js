@@ -4,7 +4,7 @@ import { Router } from 'express';
 import { one, many, query } from '../db/pool.js';
 import { requireAuth, HttpError } from '../middleware/auth.js';
 import { ml } from '../lib/ml.js';
-import { cardsByIds } from '../lib/movies.js';
+import { cardsByIds, CARD_FROM } from '../lib/movies.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -96,20 +96,39 @@ r.post('/:code/start', async (req, res) => {
   if (room.host_id !== req.user.id) throw new HttpError(403, 'Only the host can start voting.');
   if (room.status !== 'lobby') throw new HttpError(409, 'Voting has already started.');
   const mem = await members(room.id);
-  const { max_runtime = null, moods = [], family = false } = req.body ?? {};
-  const ranked = await ml('/group', { user_ids: mem.map((m) => m.id), limit: 12, max_runtime, moods, family }, { timeout: 8000 });
-  if (!ranked?.length) throw new HttpError(503, 'Couldn’t build a shortlist right now. Try again in a moment.');
+  const body = req.body ?? {};
+  const max_runtime = Number(body.max_runtime) > 0 ? Math.floor(Number(body.max_runtime)) : null;
+  const moods = (Array.isArray(body.moods) ? body.moods : []).filter((m) => typeof m === 'string').slice(0, 2);
+  const family = !!body.family;
+  let ranked = await ml('/group', { user_ids: mem.map((m) => m.id), limit: 12, max_runtime, moods, family }, { timeout: 8000 });
+  if (!ranked?.length) {
+    // ML asleep or slow: a shortlist of well-rated films that fit the room's limits and that nobody here has
+    // logged yet. No per-person match % in that case.
+    const rows = await many(
+      `SELECT m.id FROM ${CARD_FROM}
+       WHERE ($1::int IS NULL OR m.runtime <= $1)
+         AND (NOT $3 OR (m.certification IN ('G', 'PG', 'PG-13') AND NOT 'Horror' = ANY(m.genres)))
+         AND NOT EXISTS (SELECT 1 FROM reviews rv WHERE rv.movie_id = m.id AND rv.user_id = ANY($4::int[]))
+       ORDER BY m.moods && $2::text[] DESC, (COALESCE(s.n_ratings, 0) * COALESCE(s.avg_rating, 0) + 10 * 3.6) / (COALESCE(s.n_ratings, 0) + 10) DESC
+       LIMIT 12`, [max_runtime, moods, family, mem.map((m) => m.id)]);
+    ranked = rows.map((r) => ({ movie_id: r.id, members: {} }));
+  }
+  if (!ranked.length) throw new HttpError(409, 'No films fit those limits. Loosen the time limit or pick other moods.');
 
   const scores = Object.fromEntries(ranked.map((x) => [x.movie_id, x.members]));
   const ids = ranked.map((x) => x.movie_id);
+  // Demo members vote from their predicted match; without one (ML asleep), from the community rating.
+  const community = Object.fromEntries((await many(`SELECT movie_id, avg_rating FROM movie_stats WHERE movie_id = ANY($1::int[])`, [ids]))
+    .map((s) => [s.movie_id, s.avg_rating]));
   await query(`UPDATE watch_rooms SET status='voting', candidate_ids=$2, scores=$3, filters=$4 WHERE id=$1`,
     [room.id, ids, JSON.stringify(scores), JSON.stringify({ max_runtime, moods, family })]);
 
   // Demo members vote from their predicted match.
   for (const m of mem.filter((x) => x.is_demo)) {
     for (const id of ids) {
-      const pct = scores[id]?.[m.id] ?? 60;
-      const vote = pct >= 92 ? 2 : pct >= 82 ? 1 : -1;
+      const pct = scores[id]?.[m.id];
+      const stars = community[id] ?? 3.5;
+      const vote = pct != null ? (pct >= 92 ? 2 : pct >= 82 ? 1 : -1) : stars >= 4.2 ? 2 : stars >= 3.8 ? 1 : -1;
       await query('INSERT INTO room_votes VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING', [room.id, m.id, id, vote]);
     }
     await query('UPDATE room_members SET finished=TRUE WHERE room_id=$1 AND user_id=$2', [room.id, m.id]);

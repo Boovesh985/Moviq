@@ -30,7 +30,7 @@ def in_validation(key: str, pct: int = 20) -> bool:
 
 
 def db():
-    return psycopg.connect(DB_URL, prepare_threshold=None)   # safe behind a connection pooler (Neon)
+    return psycopg.connect(DB_URL, prepare_threshold=None, connect_timeout=10)   # safe behind a connection pooler (Neon)
 
 
 class Registry:
